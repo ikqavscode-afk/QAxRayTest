@@ -22,5 +22,4 @@ jobs:
       - name: Типы
         run: mypy app
       - name: Тесты
-      - name: Тесты
         run: pytest
