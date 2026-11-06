@@ -3,7 +3,7 @@ name = "qaxraytest"
 version = "0.1.0"
 description = "Безопасная платформа базовых проверок сайтов и API"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["pydantic>=2.7"]
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]
