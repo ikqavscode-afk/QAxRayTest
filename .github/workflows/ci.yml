@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Установка
+        run: pip install -e ".[dev]"
+      - name: Проверка контента
+        run: python scripts/check_content.py
+      - name: Линтер
+        run: ruff check .
+      - name: Типы
+        run: mypy app
+      - name: Тесты
+        # код 5 означает «тестов нет»; убрать, когда появятся первые тесты
+        run: pytest || [ $? -eq 5 ]

@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
+allure-results/
+allure-report/
+artifacts/
+instance/
+.DS_Store
+*.egg-info/
