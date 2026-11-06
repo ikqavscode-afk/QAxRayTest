@@ -22,5 +22,5 @@ jobs:
       - name: Типы
         run: mypy app
       - name: Тесты
-        # код 5 означает «тестов нет»; убрать, когда появятся первые тесты
-        run: pytest || [ $? -eq 5 ]
+      - name: Тесты
+        run: pytest
