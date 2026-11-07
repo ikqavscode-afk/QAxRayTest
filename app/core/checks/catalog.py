@@ -14,7 +14,7 @@ from app.core.checks.availability import (
     NoRedirectLoop,
 )
 from app.core.checks.base import Check
-from app.core.checks.links import LinksAreWellFormed, NavigationFound
+from app.core.checks.links import InternalLinksAreReachable, LinksAreWellFormed, NavigationFound
 from app.core.checks.structure import BodyIsNotEmpty, HtmlStructure, PageHasTitle
 
 
@@ -30,6 +30,7 @@ def default_checks() -> list[Check]:
         BodyIsNotEmpty(),
         HtmlStructure(),
         LinksAreWellFormed(),
+        InternalLinksAreReachable(),
         NavigationFound(),
         ApiBaseResponds(),
         ApiStatusIsExpected(),

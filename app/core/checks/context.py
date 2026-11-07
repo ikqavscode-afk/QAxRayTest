@@ -54,8 +54,8 @@ class CheckContext:
             raise ValueError("Базовый адрес API не указан")
         return self.api_base_url.rstrip("/") + path
 
-    def api_get(self, url: str) -> HttpResponse:
-        """GET к API. Каждый адрес запрашивается один раз, сбой тоже запоминается."""
+    def get_cached(self, url: str) -> HttpResponse:
+        """GET с кэшем: каждый адрес запрашивается один раз, сбой тоже запоминается."""
         if url not in self._api_cache:
             try:
                 self._api_cache[url] = self.http.get(url)
@@ -65,6 +65,10 @@ class CheckContext:
         if isinstance(outcome, HttpClientError):
             raise outcome
         return outcome
+
+    def api_get(self, url: str) -> HttpResponse:
+        """GET к API (общий кэш с get_cached)."""
+        return self.get_cached(url)
 
     def api_root(self) -> HttpResponse:
         """Ответ на базовый адрес API."""

@@ -1,7 +1,7 @@
 import json
-from urllib.parse import urlsplit
 
 from app.core.checks.context import CheckContext
+from app.core.checks.reporting import without_query
 from app.core.openapi import check_required, load_spec, response_shape
 from app.core.ports import HttpResponse
 from app.schemas.result import CheckResult, Severity
@@ -12,18 +12,12 @@ NO_PATHS_REASON = "Пути для GET-запросов не указаны"
 ALLOWED_STATUSES = (200,)
 
 
-def _without_query(url: str) -> str:
-    """Адрес без query и fragment: в отчёт не должны попадать токены из параметров."""
-    parts = urlsplit(url)
-    return f"{parts.scheme}://{parts.netloc}{parts.path}"
-
-
 def _display_path(path: str) -> str:
     return path.split("?", 1)[0].split("#", 1)[0]
 
 
 def _request_line(response: HttpResponse) -> str:
-    return f"GET {_without_query(response.url)} -> {response.status_code}"
+    return f"GET {without_query(response.url)} -> {response.status_code}"
 
 
 def _is_json(response: HttpResponse) -> bool:

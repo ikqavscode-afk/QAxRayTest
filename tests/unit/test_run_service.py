@@ -21,6 +21,7 @@ def test_default_profile_contains_profile_in_order():
     ids = [check.check_id for check in default_checks()]
     assert ids == [f"QC-00{number}" for number in range(1, 9)] + [
         "QC-011",
+        "QC-012",
         "QC-013",
         "QC-020",
         "QC-021",
@@ -38,8 +39,8 @@ def test_check_ids_are_unique():
 
 def test_healthy_site_passes_all_checks():
     report = make_service(FakeHttp(response=page())).run(SITE)
-    assert len(report.results) == 16
-    assert report.summary[CheckStatus.PASSED] == 10
+    assert len(report.results) == 17
+    assert report.summary[CheckStatus.PASSED] == 11
     assert report.summary[CheckStatus.SKIPPED] == 6  # адрес API не указан
 
 
@@ -48,13 +49,13 @@ def test_one_failing_check_does_not_hide_the_others():
     statuses = {result.check_id: result.status for result in report.results}
     assert statuses["QC-002"] is CheckStatus.FAILED
     assert statuses["QC-001"] is CheckStatus.PASSED
-    assert report.summary[CheckStatus.FAILED] == 1
+    assert report.summary[CheckStatus.FAILED] == 2  # QC-002 и QC-012: внутренняя ссылка тоже 404
 
 
 def test_network_failure_blocks_all_checks_but_site_is_requested_once():
     http = FakeHttp(error=NetworkError("нет ответа"))
     report = make_service(http).run(SITE)
-    assert report.summary[CheckStatus.BLOCKED] == 10
+    assert report.summary[CheckStatus.BLOCKED] == 11
     assert report.summary[CheckStatus.SKIPPED] == 6
     assert len(http.calls) == 1
 
