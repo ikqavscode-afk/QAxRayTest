@@ -5,6 +5,7 @@ from typing import Protocol
 from pydantic import ValidationError
 
 from app.bootstrap import build_run_service
+from app.config import SettingsError
 from app.core.security.policy import TargetRejectedError
 from app.schemas.report import RunReport
 from app.schemas.status import CheckStatus
@@ -75,7 +76,11 @@ def main(argv: Sequence[str] | None = None, service: Service | None = None) -> i
         for field, message in describe_errors(error).items():
             print(f"Параметры отклонены ({FIELD_LABELS[field]}): {message}")
         return 2
-    runner = service or build_run_service()
+    try:
+        runner = service or build_run_service()
+    except SettingsError as error:
+        print(f"Ошибка настроек: {error}")
+        return 2
     try:
         report = runner.run(target)
     except TargetRejectedError as error:

@@ -156,3 +156,10 @@ def test_main_rejects_api_expect_for_path_that_was_not_given(capsys):
     assert main(argv, service=service) == 2
     assert service.targets == []
     assert "--api-expect" in capsys.readouterr().out
+
+
+def test_main_returns_two_and_names_variable_for_bad_settings(monkeypatch, capsys):
+    monkeypatch.setenv("QAXRAY_HTTP_TIMEOUT", "abc")
+    assert main(["https://example.com"]) == 2
+    output = capsys.readouterr().out
+    assert "QAXRAY_HTTP_TIMEOUT" in output and "Ошибка настроек" in output

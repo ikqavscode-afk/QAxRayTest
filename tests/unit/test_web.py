@@ -1,5 +1,6 @@
 import pytest
 
+from app.config import SettingsError
 from app.core.security.policy import TargetRejectedError
 from app.schemas.report import RunReport
 from app.schemas.result import CheckResult, Severity
@@ -179,3 +180,9 @@ def test_bad_expected_status_is_reported_at_paths_field(make_client):
 def test_form_hint_explains_expected_status_syntax(make_client):
     html = make_client(StubService()).get("/").get_data(as_text=True)
     assert "/ping | 201" in html
+
+
+def test_app_refuses_to_start_with_bad_settings(monkeypatch):
+    monkeypatch.setenv("QAXRAY_MAX_BYTES", "1")
+    with pytest.raises(SettingsError, match="QAXRAY_MAX_BYTES"):
+        create_app()

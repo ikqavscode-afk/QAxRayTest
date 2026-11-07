@@ -1,0 +1,167 @@
+import pytest
+import requests
+import responses
+from pydantic import ValidationError
+
+from app.bootstrap import build_http_client, build_run_service
+from app.config import Settings, SettingsError
+from app.core.ports import NetworkError, TooManyRedirectsError
+from app.core.security.policy import TargetPolicy
+from app.services.run_service import RunService
+
+URL = "https://example.com/"
+
+
+def policy():
+    return TargetPolicy(resolver=lambda host: ["93.184.216.34"])
+
+
+# Значения по умолчанию и чтение окружения
+
+
+def test_defaults_match_the_values_used_before_configuration_existed():
+    settings = Settings()
+    assert settings.http_timeout == 10.0
+    assert settings.max_bytes == 1_000_000
+    assert settings.max_redirects == 5
+    assert settings.max_retries == 2
+    assert settings.retry_delay == 0.5
+
+
+def test_empty_environment_gives_defaults():
+    assert Settings.from_env({}) == Settings()
+
+
+def test_unrelated_and_blank_variables_are_ignored():
+    environment = {"PATH": "/usr/bin", "QAXRAY_HTTP_TIMEOUT": "   ", "QAXRAY_MAX_BYTES": ""}
+    assert Settings.from_env(environment) == Settings()
+
+
+def test_all_variables_are_read():
+    settings = Settings.from_env(
+        {
+            "QAXRAY_HTTP_TIMEOUT": "7.5",
+            "QAXRAY_MAX_BYTES": "250000",
+            "QAXRAY_MAX_REDIRECTS": "3",
+            "QAXRAY_MAX_RETRIES": "1",
+            "QAXRAY_RETRY_DELAY": "1.5",
+        }
+    )
+    assert settings == Settings(
+        http_timeout=7.5, max_bytes=250_000, max_redirects=3, max_retries=1, retry_delay=1.5
+    )
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {"QAXRAY_HTTP_TIMEOUT": "1", "QAXRAY_MAX_BYTES": "10000", "QAXRAY_MAX_REDIRECTS": "0"},
+        {"QAXRAY_HTTP_TIMEOUT": "30", "QAXRAY_MAX_BYTES": "5000000", "QAXRAY_MAX_REDIRECTS": "10"},
+        {"QAXRAY_MAX_RETRIES": "0", "QAXRAY_RETRY_DELAY": "0"},
+        {"QAXRAY_MAX_RETRIES": "3", "QAXRAY_RETRY_DELAY": "5"},
+    ],
+)
+def test_boundary_values_are_accepted(environment):
+    Settings.from_env(environment)
+
+
+# Границы безопасности
+
+
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [
+        ("QAXRAY_HTTP_TIMEOUT", "0.5"),
+        ("QAXRAY_HTTP_TIMEOUT", "31"),
+        ("QAXRAY_MAX_BYTES", "9999"),
+        ("QAXRAY_MAX_BYTES", "5000001"),
+        ("QAXRAY_MAX_REDIRECTS", "-1"),
+        ("QAXRAY_MAX_REDIRECTS", "11"),
+        ("QAXRAY_MAX_RETRIES", "4"),
+        ("QAXRAY_RETRY_DELAY", "-1"),
+        ("QAXRAY_RETRY_DELAY", "6"),
+    ],
+)
+def test_out_of_range_values_are_rejected_and_name_the_variable(variable, value):
+    with pytest.raises(SettingsError) as caught:
+        Settings.from_env({variable: value})
+    assert variable in str(caught.value)
+
+
+@pytest.mark.parametrize("value", ["abc", "nan", "inf", "-inf", "1e999"])
+def test_non_numeric_and_non_finite_values_are_rejected(value):
+    with pytest.raises(SettingsError) as caught:
+        Settings.from_env({"QAXRAY_HTTP_TIMEOUT": value})
+    assert "QAXRAY_HTTP_TIMEOUT" in str(caught.value)
+
+
+def test_fractional_value_for_integer_setting_is_rejected():
+    with pytest.raises(SettingsError, match="QAXRAY_MAX_REDIRECTS"):
+        Settings.from_env({"QAXRAY_MAX_REDIRECTS": "2.5"})
+
+
+def test_all_problems_are_reported_together():
+    with pytest.raises(SettingsError) as caught:
+        Settings.from_env({"QAXRAY_HTTP_TIMEOUT": "0", "QAXRAY_MAX_RETRIES": "9"})
+    message = str(caught.value)
+    assert "QAXRAY_HTTP_TIMEOUT" in message and "QAXRAY_MAX_RETRIES" in message
+
+
+def test_settings_cannot_be_built_out_of_range_directly_either():
+    with pytest.raises(ValidationError):
+        Settings(http_timeout=999)
+
+
+def test_settings_are_immutable():
+    with pytest.raises(ValidationError):
+        Settings().http_timeout = 1.0  # type: ignore[misc]
+
+
+def test_there_is_no_setting_that_disables_the_address_policy():
+    assert not any("polic" in name or "ssrf" in name for name in Settings.model_fields)
+
+
+# Настройки действительно доходят до HTTP-клиента
+
+
+@responses.activate
+def test_redirect_limit_comes_from_settings():
+    responses.add(responses.GET, URL, status=302, headers={"Location": "/next"})
+    client = build_http_client(Settings(max_redirects=0), policy())
+    with pytest.raises(TooManyRedirectsError):
+        client.get(URL)
+
+
+@responses.activate
+def test_retry_count_comes_from_settings():
+    responses.add(responses.GET, URL, body=requests.ConnectionError("нет сети"))
+    client = build_http_client(Settings(max_retries=1, retry_delay=0), policy())
+    with pytest.raises(NetworkError):
+        client.get(URL)
+    assert len(responses.calls) == 2  # первая попытка и один повтор
+
+
+@responses.activate
+def test_body_limit_comes_from_settings():
+    responses.add(responses.GET, URL, body=b"x" * 20_000)
+    client = build_http_client(Settings(max_bytes=10_000), policy())
+    response = client.get(URL)
+    assert response.truncated and len(response.body) <= 10_000
+
+
+@responses.activate
+def test_timeout_comes_from_settings():
+    responses.add(responses.GET, URL, body=b"ok")
+    build_http_client(Settings(http_timeout=3.0), policy()).get(URL)
+    assert responses.calls[0].request.req_kwargs["timeout"] == 3.0
+
+
+def test_run_service_is_built_from_environment(monkeypatch):
+    monkeypatch.setenv("QAXRAY_MAX_REDIRECTS", "2")
+    assert isinstance(build_run_service(), RunService)
+
+
+def test_bad_environment_stops_the_build_with_a_clear_error(monkeypatch):
+    monkeypatch.setenv("QAXRAY_HTTP_TIMEOUT", "abc")
+    with pytest.raises(SettingsError, match="QAXRAY_HTTP_TIMEOUT"):
+        build_run_service()
