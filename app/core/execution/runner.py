@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from app.core.browser import BrowserError
 from app.core.checks.base import Check
@@ -13,14 +13,38 @@ from app.schemas.status import CheckStatus
 logger = logging.getLogger(__name__)
 
 
+ProgressCallback = Callable[[RunReport, int], None]  # (отчёт на данный момент, всего проверок)
+
+
 class Runner:
     """Выполняет проверки по очереди. Сбой одной проверки не останавливает запуск."""
 
     def __init__(self, checks: Sequence[Check]) -> None:
         self._checks = list(checks)
 
-    def run(self, context: CheckContext) -> RunReport:
-        return RunReport(results=[self._run_one(check, context) for check in self._checks])
+    def run(
+        self,
+        context: CheckContext,
+        *,
+        on_progress: ProgressCallback | None = None,
+        should_stop: Callable[[], bool] | None = None,
+    ) -> RunReport:
+        """Выполняет проверки по очереди.
+
+        on_progress вызывается в начале (пустой отчёт, чтобы стало известно число проверок) и после
+        каждой проверки. should_stop проверяется перед каждой проверкой: при остановке остальные
+        не выполняются, возвращается отчёт по выполненным."""
+        total = len(self._checks)
+        results: list[CheckResult] = []
+        if on_progress:
+            on_progress(RunReport(results=[]), total)
+        for check in self._checks:
+            if should_stop and should_stop():
+                break
+            results.append(self._run_one(check, context))
+            if on_progress:
+                on_progress(RunReport(results=list(results)), total)
+        return RunReport(results=results)
 
     def _run_one(self, check: Check, context: CheckContext) -> CheckResult:
         try:

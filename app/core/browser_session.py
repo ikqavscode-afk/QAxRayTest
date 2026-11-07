@@ -1,3 +1,4 @@
+import threading
 import time
 from collections.abc import Callable
 
@@ -46,6 +47,7 @@ class BrowserSession:
         self._info: PageInfo | None = None
         self._failures: dict[Viewport, BrowserError] = {}
         self._closed = False
+        self._state_lock = threading.Lock()  # закрытие допускается из другого потока
 
     @property
     def info(self) -> PageInfo | None:
@@ -73,8 +75,9 @@ class BrowserSession:
 
     def close(self) -> None:
         """Закрывает браузер. Идемпотентно; ошибка закрытия не должна скрыть результаты проверок."""
-        self._closed = True
-        port, self._port = self._port, None
+        with self._state_lock:
+            self._closed = True
+            port, self._port = self._port, None
         if port is None:
             return
         try:
@@ -88,10 +91,15 @@ class BrowserSession:
         if self._port is None:
             self._started_at = self._clock()
             try:
-                self._port = self._factory()
+                port = self._factory()
             except BrowserError as error:
                 self._start_error = error
                 raise
+            with self._state_lock:
+                if self._closed:  # остановка пришла во время запуска браузера
+                    port.close()
+                    raise BrowserUnavailableError("Сессия браузера закрыта")
+                self._port = port
         return self._port
 
     def _check_budget(self) -> None:

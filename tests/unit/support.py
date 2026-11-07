@@ -9,6 +9,7 @@ from app.core.browser import (
 )
 from app.core.checks.context import CheckContext
 from app.core.ports import HttpResponse
+from app.core.security.policy import TargetRejectedError
 
 SITE = "https://example.com/"
 
@@ -59,18 +60,33 @@ def context_for(http):
 
 
 class StubService:
-    """Заглушка RunService для веб-тестов: возвращает отчёт или бросает ошибку."""
+    """Заглушка RunService для веб-тестов: возвращает отчёт или бросает ошибку.
+
+    Запрещённый адрес (TargetRejectedError) бросается в validate, как у настоящей службы."""
 
     def __init__(self, report=None, error=None):
         self.report = report
         self.error = error
         self.targets = []
 
-    def run(self, target):
+    def validate(self, target):
+        if isinstance(self.error, TargetRejectedError):
+            raise self.error
+
+    def run(self, target, on_progress=None, control=None):
         self.targets.append(target)
-        if self.error:
+        if self.error and not isinstance(self.error, TargetRejectedError):
             raise self.error
         return self.report
+
+
+def sync_manager(service, store=None):
+    """Менеджер запусков без потоков: фоновая работа выполняется сразу (детерминированные тесты)."""
+    from app.services.run_manager import RunManager
+    from app.services.run_store import InMemoryRunStore
+
+    store = store or InMemoryRunStore()
+    return RunManager(service, store, starter=lambda job: job()), store
 
 
 class FakeBrowser:

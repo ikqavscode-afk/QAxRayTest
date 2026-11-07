@@ -3,40 +3,63 @@
 {% block content %}
 <h1>Результаты проверки</h1>
 <p class="lead">Сайт: <strong>{{ site_url }}</strong></p>
-{% if record.report is none %}
-<p class="error" role="alert">Запуск завершился внутренней ошибкой приложения. Повторите проверку позже.</p>
-<p><a class="button" href="{{ url_for('main.index') }}">Новая проверка</a></p>
-{% else %}
-{% set report = record.report %}
-<ul class="summary" aria-label="Сводка по статусам">
-  {% for status, count in report.summary.items() %}
-  <li class="status status-{{ status.value|lower }}">{{ status.value }}: {{ count }}</li>
-  {% endfor %}
-</ul>
-<div class="table-wrap" tabindex="0" role="region" aria-label="Таблица результатов; на узком экране прокручивается по горизонтали">
-<table>
-  <caption class="visually-hidden">Результаты проверок</caption>
-  <thead><tr><th scope="col">ID</th><th scope="col">Проверка</th><th scope="col">Статус</th><th scope="col">Подробности</th></tr></thead>
-  <tbody>
-  {% for r in report.results %}
-  <tr>
-    <th scope="row">{{ r.check_id }}</th>
-    <td>{{ r.title }}</td>
-    <td><span class="status status-{{ r.status.value|lower }}">{{ r.status.value }}</span></td>
-    <td>
-      {% if r.reason %}<p class="reason">Причина: {{ r.reason }}</p>{% endif %}
-      <details>
-        <summary>Показать</summary>
-        <p>Ожидалось: {{ r.expected }}</p>
-        <p>Фактически: {{ r.actual }}</p>
-        {% if r.evidence %}<ul>{% for e in r.evidence %}<li><code>{{ e }}</code></li>{% endfor %}</ul>{% endif %}
-      </details>
-    </td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
+<div id="run" data-run-id="{{ record.run_id }}" data-status="{{ record.status.value }}">
+  {% if record.status.value == 'RUNNING' %}
+  <section class="card" aria-labelledby="progress-title">
+    <h2 id="progress-title">Идёт проверка</h2>
+    {% if record.total %}
+    <p id="progress-text" role="status" aria-live="polite">Выполнено {{ done }} из {{ record.total }} проверок{% if record.stop_requested %}. Остановка запрошена, завершаем текущую проверку…{% endif %}</p>
+    <progress id="progress" max="{{ record.total }}" value="{{ done }}" aria-labelledby="progress-text"></progress>
+    {% else %}
+    <p id="progress-text" role="status" aria-live="polite">Подготовка запуска…</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('main.stop_run', run_id=record.run_id) }}">
+      <button type="submit">Остановить запуск</button>
+    </form>
+    <p class="hint"><a href="{{ url_for('main.run_page', run_id=record.run_id) }}">Обновить страницу</a>, если результаты не появляются сами. Страница обновляется автоматически, пока выполняется запуск.</p>
+  </section>
+  {% elif record.status.value == 'STOPPED' %}
+  <p id="progress-text" role="status">Запуск остановлен: выполнено {{ done }} из {{ record.total }} проверок. Ниже результаты выполненных.</p>
+  {% elif record.status.value == 'FAILED' %}
+  <p class="error" role="alert">Запуск завершился внутренней ошибкой приложения. Повторите проверку позже.</p>
+  {% endif %}
+
+  {% if report and report.results %}
+  <div id="results">
+    <ul class="summary" aria-label="Сводка по статусам">
+      {% for status, count in report.summary.items() %}
+      <li class="status status-{{ status.value|lower }}">{{ status.value }}: {{ count }}</li>
+      {% endfor %}
+    </ul>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Таблица результатов; на узком экране прокручивается по горизонтали">
+    <table>
+      <caption class="visually-hidden">Результаты проверок</caption>
+      <thead><tr><th scope="col">ID</th><th scope="col">Проверка</th><th scope="col">Статус</th><th scope="col">Подробности</th></tr></thead>
+      <tbody>
+      {% for r in report.results %}
+      <tr>
+        <th scope="row">{{ r.check_id }}</th>
+        <td>{{ r.title }}</td>
+        <td><span class="status status-{{ r.status.value|lower }}">{{ r.status.value }}</span></td>
+        <td>
+          {% if r.reason %}<p class="reason">Причина: {{ r.reason }}</p>{% endif %}
+          <details>
+            <summary>Показать</summary>
+            <p>Ожидалось: {{ r.expected }}</p>
+            <p>Фактически: {{ r.actual }}</p>
+            {% if r.evidence %}<ul>{% for e in r.evidence %}<li><code>{{ e }}</code></li>{% endfor %}</ul>{% endif %}
+          </details>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {% endif %}
 </div>
 <p><a class="button" href="{{ url_for('main.index') }}">Новая проверка</a></p>
-{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if record.status.value == 'RUNNING' %}<script src="{{ url_for('static', filename='run.js') }}" defer></script>{% endif %}
 {% endblock %}

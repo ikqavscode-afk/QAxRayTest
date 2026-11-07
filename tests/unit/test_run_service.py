@@ -7,6 +7,7 @@ from app.core.security.policy import TargetPolicy, TargetRejectedError
 from app.schemas.result import CheckResult, Severity
 from app.schemas.status import CheckStatus
 from app.schemas.target import RunTarget
+from app.services.run_control import RunControl
 from app.services.run_service import RunService
 from tests.unit.support import SITE, FakeFactory, FakeHttp, page
 
@@ -195,3 +196,64 @@ def test_without_factory_browser_check_is_blocked_as_unavailable():
     report = service.run(SITE)
     assert report.results[0].status is CheckStatus.BLOCKED
     assert "не подключён" in report.results[0].reason
+
+
+# Прогресс, остановка, предварительная проверка адресов
+
+
+def test_service_reports_progress_with_the_total_number_of_checks():
+    calls = []
+    service = make_service(FakeHttp(response=page()))
+    service.run(SITE, on_progress=lambda report, total: calls.append((len(report.results), total)))
+    assert calls[0] == (0, len(default_checks()))
+    assert calls[-1] == (len(default_checks()), len(default_checks()))
+
+
+def test_validate_rejects_internal_addresses_without_any_request_and_names_the_field():
+    http = FakeHttp(response=page())
+    service = make_service(http)
+    with pytest.raises(TargetRejectedError) as caught:
+        service.validate(RunTarget(site_url=SITE, api_base_url="http://169.254.169.254/"))
+    assert caught.value.field == "api_base_url"
+    assert http.calls == []
+
+
+def test_validate_accepts_a_good_target():
+    make_service(FakeHttp(response=page())).validate(RunTarget(site_url=SITE))
+
+
+class StopCheck(SpyCheck):
+    """Проверка, которая просит остановить запуск и сообщает, закрыт ли уже браузер."""
+
+    check_id = "QC-998"
+
+    def __init__(self, control, factory):
+        super().__init__()
+        self.control = control
+        self.factory = factory
+        self.closed_right_after_request = None
+
+    def run(self, context):
+        context.browser_page(DESKTOP)
+        self.control.request_stop()
+        self.closed_right_after_request = self.factory.browser.closed
+        return super().run(context)
+
+
+def test_stop_request_closes_the_browser_immediately_and_skips_the_remaining_checks():
+    factory = FakeFactory()
+    control = RunControl()
+    stopper = StopCheck(control, factory)
+    later = SpyCheck()
+    policy = TargetPolicy(resolver=lambda host: [PUBLIC_IP])
+    service = RunService(
+        http=FakeHttp(response=page()),
+        policy=policy,
+        checks=[stopper, later],
+        browser_factory=factory,
+    )
+    report = service.run(SITE, control=control)
+    assert stopper.closed_right_after_request == 1  # браузер закрыт сразу, не после запуска
+    assert later.context is None  # следующая проверка не выполнялась
+    assert [r.check_id for r in report.results] == ["QC-998"]
+    assert factory.browser.closed == 1  # и повторно не закрывался с ошибкой

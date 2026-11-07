@@ -9,7 +9,7 @@ from app.schemas.status import CheckStatus
 from app.schemas.target import RunTarget
 from app.services.run_store import InMemoryRunStore
 from app.web import create_app
-from tests.unit.support import StubService
+from tests.unit.support import StubService, sync_manager
 
 
 def result(check_id, status, reason=None):
@@ -27,7 +27,8 @@ def result(check_id, status, reason=None):
 @pytest.fixture
 def make_client():
     def _make(service, store=None):
-        app = create_app(service=service, store=store)
+        manager, store = sync_manager(service, store)
+        app = create_app(service=service, store=store, manager=manager)
         app.config.update(TESTING=True)
         return app.test_client()
 

@@ -149,3 +149,69 @@ def test_store_is_safe_under_concurrent_use():
         thread.join()
     assert len(set(created)) == 200
     assert all(store.get(run_id).status is RunStatus.COMPLETED for run_id in created)
+
+
+# Прогресс, остановка, лимит одновременных запусков
+
+
+def partial(count):
+    from app.schemas.result import CheckResult, Severity
+
+    results = [
+        CheckResult(
+            check_id=f"QC-{n + 1:03d}",
+            title="Проверка",
+            status=__import__("app.schemas.status", fromlist=["CheckStatus"]).CheckStatus.PASSED,
+            severity=Severity.LOW,
+            expected="-",
+            actual="-",
+        )
+        for n in range(count)
+    ]
+    return RunReport(results=results)
+
+
+def test_progress_updates_partial_report_and_total_while_the_run_is_running():
+    store, _ = make()
+    record = store.create(TARGET)
+    updated = store.update_progress(record.run_id, partial(3), total=25)
+    assert updated.status is RunStatus.RUNNING
+    assert len(updated.report.results) == 3 and updated.total == 25
+    assert store.get(record.run_id) == updated
+
+
+def test_late_progress_after_the_run_ended_is_ignored():
+    store, _ = make()
+    record = store.create(TARGET)
+    store.stop(record.run_id, partial(2))
+    store.update_progress(record.run_id, partial(9), total=25)
+    assert len(store.get(record.run_id).report.results) == 2  # остановленный запуск не меняется
+
+
+def test_request_stop_marks_only_running_runs():
+    store, _ = make()
+    running = store.create(TARGET)
+    assert store.request_stop(running.run_id) is True
+    assert store.get(running.run_id).stop_requested is True
+    store.finish(running.run_id, partial(1))
+    assert store.request_stop(running.run_id) is False
+    assert store.request_stop("nothing") is False
+
+
+def test_stop_stores_the_partial_report_and_marks_the_run_stopped():
+    store, clock = make()
+    record = store.create(TARGET)
+    clock.now = 7.0
+    stopped = store.stop(record.run_id, partial(4))
+    assert stopped.status is RunStatus.STOPPED and stopped.finished_at == 7.0
+    assert len(stopped.report.results) == 4
+
+
+def test_max_running_limits_simultaneous_runs_but_not_finished_ones():
+    store = InMemoryRunStore(max_runs=50, max_running=2)
+    first = store.create(TARGET)
+    store.create(TARGET)
+    with pytest.raises(RunLimitError):
+        store.create(TARGET)
+    store.finish(first.run_id, partial(1))
+    assert store.create(TARGET) is not None  # место освободилось

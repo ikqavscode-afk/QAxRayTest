@@ -22,6 +22,8 @@ class RunRecord:
     target: RunTarget
     status: RunStatus
     created_at: float
-    report: RunReport | None = None
+    report: RunReport | None = None  # пока идёт запуск: отчёт по уже выполненным проверкам
     error: str | None = None
     finished_at: float | None = None
+    total: int = 0  # сколько проверок в запуске (известно после начала)
+    stop_requested: bool = False

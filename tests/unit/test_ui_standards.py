@@ -12,7 +12,7 @@ from app.schemas.report import RunReport
 from app.schemas.result import CheckResult, Severity
 from app.schemas.status import CheckStatus
 from app.web import create_app
-from tests.unit.support import StubService
+from tests.unit.support import StubService, sync_manager
 
 CSS = (Path(__file__).resolve().parents[2] / "app/web/static/style.css").read_text(encoding="utf-8")
 ROOT_FONT_PX = 16
@@ -153,7 +153,9 @@ def test_scrollable_results_table_is_reachable_and_named_for_keyboard_users():
         expected="-",
         actual="-",
     )
-    app = create_app(service=StubService(RunReport(results=[result])))
+    service = StubService(RunReport(results=[result]))
+    manager, store = sync_manager(service)
+    app = create_app(service=service, store=store, manager=manager)
     html = (
         app.test_client()
         .post(
@@ -168,3 +170,18 @@ def test_scrollable_results_table_is_reachable_and_named_for_keyboard_users():
     assert 'tabindex="0"' in wrapper.group(0)
     assert 'role="region"' in wrapper.group(0)
     assert "aria-label=" in wrapper.group(0)
+
+
+# Индикатор прогресса: контраст дорожки и заполнения не ниже 3:1 (WCAG 1.4.11)
+
+
+def test_progress_bar_track_and_fill_have_3_to_1_contrast_on_the_card():
+    colors = variables()
+    track = rule("progress::-webkit-progress-bar")
+    fill = rule("progress::-webkit-progress-value")
+    assert "var(--border-control)" in track and "var(--accent)" in fill
+    assert contrast(colors["border-control"], colors["panel"]) >= 3
+    assert contrast(colors["accent"], colors["panel"]) >= 3
+    assert (
+        contrast(colors["accent"], colors["border-control"]) >= 1.5
+    )  # заполнение отличимо от дорожки

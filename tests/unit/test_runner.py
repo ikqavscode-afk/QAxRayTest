@@ -114,3 +114,47 @@ def test_summary_counts_every_status_including_zeros():
 
 def test_empty_run_has_zero_summary():
     assert sum(run().summary.values()) == 0
+
+
+# Прогресс и остановка
+
+
+def test_progress_is_reported_at_start_and_after_every_check():
+    calls = []
+    Runner([StubCheck("QC-001"), StubCheck("QC-002"), StubCheck("QC-003")]).run(
+        CONTEXT, on_progress=lambda report, total: calls.append((len(report.results), total))
+    )
+    assert calls == [(0, 3), (1, 3), (2, 3), (3, 3)]
+
+
+def test_progress_reports_the_partial_report_with_results_so_far():
+    seen = []
+    Runner([StubCheck("QC-001"), StubCheck("QC-002")]).run(
+        CONTEXT, on_progress=lambda report, total: seen.append([r.check_id for r in report.results])
+    )
+    assert seen == [[], ["QC-001"], ["QC-001", "QC-002"]]
+
+
+def test_stop_flag_is_checked_between_checks_and_remaining_checks_do_not_run():
+    ran = []
+
+    class Recording(StubCheck):
+        def run(self, context):
+            ran.append(self.check_id)
+            return super().run(context)
+
+    flags = iter([False, False, True, True])
+    report = Runner([Recording("QC-001"), Recording("QC-002"), Recording("QC-003")]).run(
+        CONTEXT, should_stop=lambda: next(flags)
+    )
+    assert ran == ["QC-001", "QC-002"]
+    assert [r.check_id for r in report.results] == ["QC-001", "QC-002"]
+
+
+def test_a_stop_before_the_first_check_gives_an_empty_report():
+    report = Runner([StubCheck("QC-001")]).run(CONTEXT, should_stop=lambda: True)
+    assert report.results == []
+
+
+def test_runner_without_callbacks_behaves_as_before():
+    assert len(run(StubCheck("QC-001"), StubCheck("QC-002")).results) == 2

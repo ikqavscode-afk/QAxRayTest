@@ -3,6 +3,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import replace
+from typing import Protocol
 
 from app.schemas.report import RunReport
 from app.schemas.run import RunRecord, RunStatus
@@ -14,6 +15,26 @@ DEFAULT_MAX_RUNS = 50
 
 class RunLimitError(RuntimeError):
     """Все места заняты работающими запусками: новый пока не принимается."""
+
+
+class RunStore(Protocol):
+    """Контракт хранилища запусков: сейчас память, позже файл или база без правок веб-слоя."""
+
+    def create(self, target: RunTarget) -> RunRecord: ...
+
+    def get(self, run_id: str) -> RunRecord | None: ...
+
+    def update_progress(self, run_id: str, report: RunReport, total: int) -> RunRecord: ...
+
+    def request_stop(self, run_id: str) -> bool: ...
+
+    def stop(self, run_id: str, report: RunReport) -> RunRecord: ...
+
+    def finish(self, run_id: str, report: RunReport) -> RunRecord: ...
+
+    def fail(self, run_id: str, reason: str) -> RunRecord: ...
+
+    def discard(self, run_id: str) -> None: ...
 
 
 def _new_id() -> str:
@@ -31,11 +52,13 @@ class InMemoryRunStore:
         *,
         ttl_seconds: float = DEFAULT_TTL_SECONDS,
         max_runs: int = DEFAULT_MAX_RUNS,
+        max_running: int | None = None,
         clock: Callable[[], float] = time.time,
         id_factory: Callable[[], str] = _new_id,
     ) -> None:
         self._ttl = ttl_seconds
         self._max_runs = max_runs
+        self._max_running = max_running
         self._clock = clock
         self._id_factory = id_factory
         self._lock = threading.Lock()
@@ -47,6 +70,9 @@ class InMemoryRunStore:
             if len(self._runs) >= self._max_runs:
                 self._evict_oldest_finished()
             if len(self._runs) >= self._max_runs:
+                raise RunLimitError("Слишком много одновременных запусков")
+            running = sum(1 for rec in self._runs.values() if rec.status is RunStatus.RUNNING)
+            if self._max_running is not None and running >= self._max_running:
                 raise RunLimitError("Слишком много одновременных запусков")
             record = RunRecord(
                 run_id=self._id_factory(),
@@ -61,6 +87,31 @@ class InMemoryRunStore:
         with self._lock:
             self._purge_expired()
             return self._runs.get(run_id)
+
+    def update_progress(self, run_id: str, report: RunReport, total: int) -> RunRecord:
+        """Отчёт по выполненным проверкам и общее число проверок. Для завершённого запуска
+        запоздавшее обновление игнорируется."""
+        with self._lock:
+            record = self._runs[run_id]
+            if record.status is not RunStatus.RUNNING:
+                return record
+            updated = replace(record, report=report, total=total)
+            self._runs[run_id] = updated
+            return updated
+
+    def request_stop(self, run_id: str) -> bool:
+        """Отмечает просьбу остановить работающий запуск. False: запуска нет или он уже закончен."""
+        with self._lock:
+            record = self._runs.get(run_id)
+            if record is None or record.status is not RunStatus.RUNNING:
+                return False
+            self._runs[run_id] = replace(record, stop_requested=True)
+            return True
+
+    def stop(self, run_id: str, report: RunReport) -> RunRecord:
+        return self._update(
+            run_id, status=RunStatus.STOPPED, report=report, finished_at=self._clock()
+        )
 
     def finish(self, run_id: str, report: RunReport) -> RunRecord:
         return self._update(
