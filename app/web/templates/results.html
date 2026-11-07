@@ -34,22 +34,16 @@
     <div class="table-wrap" tabindex="0" role="region" aria-label="Таблица результатов; на узком экране прокручивается по горизонтали">
     <table>
       <caption class="visually-hidden">Результаты проверок</caption>
-      <thead><tr><th scope="col">ID</th><th scope="col">Проверка</th><th scope="col">Статус</th><th scope="col">Подробности</th></tr></thead>
+      <thead><tr><th scope="col">ID</th><th scope="col">Проверка</th><th scope="col">Статус</th></tr></thead>
       <tbody>
       {% for r in report.results %}
       <tr>
         <th scope="row">{{ r.check_id }}</th>
-        <td>{{ r.title }}</td>
-        <td><span class="status status-{{ r.status.value|lower }}">{{ r.status.value }}</span></td>
         <td>
-          {% if r.reason %}<p class="reason">Причина: {{ r.reason }}</p>{% endif %}
-          <details>
-            <summary>Показать</summary>
-            <p>Ожидалось: {{ r.expected }}</p>
-            <p>Фактически: {{ r.actual }}</p>
-            {% if r.evidence %}<ul>{% for e in r.evidence %}<li><code>{{ e }}</code></li>{% endfor %}</ul>{% endif %}
-          </details>
+          <a href="{{ url_for('main.check_detail', run_id=record.run_id, check_id=r.check_id) }}">{{ r.title }}</a>
+          {% if r.reason %}<p class="reason">{{ r.reason }}</p>{% endif %}
         </td>
+        <td><span class="status status-{{ r.status.value|lower }}">{{ r.status.value }}</span></td>
       </tr>
       {% endfor %}
       </tbody>

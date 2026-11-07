@@ -21,6 +21,8 @@ from app.services.run_store import RunLimitError, RunStore
 
 bp = Blueprint("main", __name__)
 RUN_ID = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+CHECK_ID = re.compile(r"^QC-\d{3}$")
+SEVERITY_WORDS = {"HIGH": "высокая", "MEDIUM": "средняя", "LOW": "низкая"}
 
 # Ошибка про ожидаемые статусы показывается у поля с путями
 FIELD_ON_FORM = {"api_expected_statuses": "api_paths"}
@@ -102,6 +104,26 @@ def run_page(run_id: str) -> str | tuple[str, int]:
         record=record,
         report=record.report,
         done=done,
+        site_url=record.target.site_url,
+    )
+
+
+@bp.get("/runs/<run_id>/checks/<check_id>")
+def check_detail(run_id: str, check_id: str) -> str | tuple[str, int]:
+    """Страница одной проверки: ожидаемое, фактическое, причина, доказательства."""
+    store: Store = current_app.extensions["run_store"]
+    record = store.get(run_id) if RUN_ID.fullmatch(run_id) else None
+    if record is None:
+        return render_template("run_not_found.html"), 404
+    results = record.report.results if record.report else []
+    found = next((item for item in results if item.check_id == check_id), None)
+    if found is None or not CHECK_ID.fullmatch(check_id):
+        return render_template("check_not_found.html", record=record), 404
+    return render_template(
+        "check_detail.html",
+        record=record,
+        result=found,
+        severity=SEVERITY_WORDS[found.severity.value],
         site_url=record.target.site_url,
     )
 

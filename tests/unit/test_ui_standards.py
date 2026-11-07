@@ -101,9 +101,7 @@ def test_focus_indicator_is_defined_and_never_removed():
     assert not re.search(r"outline\s*:\s*(none|0)\b", CSS)
 
 
-@pytest.mark.parametrize(
-    "selector", ["button, .button", "label.check", "details summary", ".brand"]
-)
+@pytest.mark.parametrize("selector", ["button, .button", "label.check", "td a", ".brand"])
 def test_interactive_elements_have_at_least_44px_touch_target(selector):
     assert to_px(declared(selector, "min-height")) >= 44
 
@@ -185,3 +183,15 @@ def test_progress_bar_track_and_fill_have_3_to_1_contrast_on_the_card():
     assert (
         contrast(colors["accent"], colors["border-control"]) >= 1.5
     )  # заполнение отличимо от дорожки
+
+
+def test_long_evidence_strings_wrap_instead_of_overflowing_on_narrow_screens():
+    assert "overflow-wrap" in rule("dd code") or "overflow-wrap" in rule("dd")
+
+
+def test_links_use_the_accent_color_with_aa_contrast_and_stay_underlined():
+    link = rule("a")
+    assert "var(--accent)" in link and "text-decoration" not in link  # подчёркивание остаётся
+    colors = variables()
+    assert contrast(colors["accent"], colors["bg"]) >= 4.5
+    assert contrast(colors["accent"], colors["panel"]) >= 4.5

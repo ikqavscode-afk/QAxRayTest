@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Проверка не найдена — QAxRayTest{% endblock %}
+{% block content %}
+<h1>Проверка не найдена</h1>
+{% if record.status.value == 'RUNNING' %}
+<p class="lead">Результат этой проверки пока не готов: запуск ещё выполняется. Вернитесь к результатам и обновите страницу позже.</p>
+{% else %}
+<p class="lead">Такой проверки в этом запуске нет.</p>
+{% endif %}
+<p><a class="button" href="{{ url_for('main.run_page', run_id=record.run_id) }}">К результатам</a></p>
+{% endblock %}

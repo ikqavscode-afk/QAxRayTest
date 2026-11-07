@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ result.check_id }} — QAxRayTest{% endblock %}
+{% block content %}
+<h1>{{ result.check_id }}. {{ result.title }}</h1>
+<p class="lead">Сайт: <strong>{{ site_url }}</strong></p>
+<p>
+  <span class="status status-{{ result.status.value|lower }}">{{ result.status.value }}</span>
+  Важность: {{ severity }}
+</p>
+<dl class="facts">
+  <dt>Ожидалось</dt>
+  <dd>{{ result.expected }}</dd>
+  <dt>Фактически</dt>
+  <dd>{{ result.actual }}</dd>
+  {% if result.reason %}
+  <dt>Причина</dt>
+  <dd>{{ result.reason }}</dd>
+  {% endif %}
+  {% if result.duration_ms %}
+  <dt>Длительность</dt>
+  <dd>{{ result.duration_ms }} мс</dd>
+  {% endif %}
+  {% if result.evidence %}
+  <dt>Доказательства</dt>
+  <dd><ul>{% for e in result.evidence %}<li><code>{{ e }}</code></li>{% endfor %}</ul></dd>
+  {% endif %}
+</dl>
+<p><a class="button" href="{{ url_for('main.run_page', run_id=record.run_id) }}">К результатам</a></p>
+{% endblock %}
