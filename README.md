@@ -4,7 +4,7 @@
 Вы вводите адрес, запускаете стандартный набор проверок и получаете понятный результат:
 какие проверки пройдены, где есть проблема и что не удалось проверить.
 
-> Статус: ранняя версия (Sprint 3 завершён, идёт Sprint 4). Работают все 25 запланированных проверок:
+> Статус: ранняя версия (Sprint 4 завершён). Работают все 25 запланированных проверок:
 > доступность и HTTP, структура по исходному HTML, ссылки и навигация, API по `GET`-путям и браузерные
 > проверки (изображения, переполнение, имена кнопок, метки полей, клавиатура). вход и регистрация (структура). План: [docs/checklist/checklist-v1.md](docs/checklist/checklist-v1.md).
 
@@ -113,7 +113,7 @@ python -m flask --app "app.web:create_app" run
 - Продуктовый бэклог и состав MVP: [docs/backlog/product-backlog.md](docs/backlog/product-backlog.md)
 - Стандарты интерфейса и доступности (WCAG 2.2 AA, эвристики Нильсена): [docs/standards/ui-ux-standards.md](docs/standards/ui-ux-standards.md)
 - Процесс (Agile / Scrum, определения готовности и завершённости): [docs/process/scrum.md](docs/process/scrum.md)
-- План ближайшего спринта: [docs/sprints/sprint-04-plan.md](docs/sprints/sprint-04-plan.md)
+- План ближайшего спринта: [docs/sprints/sprint-05-plan.md](docs/sprints/sprint-05-plan.md)
 - Архитектурные решения: [docs/decisions/](docs/decisions/)
 
 ## Живые тесты (необязательные)
