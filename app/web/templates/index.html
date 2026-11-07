@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Новая проверка</h1>
+<p class="lead">Введите адрес сайта, подтвердите право на его тестирование и запустите стандартный набор базовых проверок.</p>
+<form method="post" action="{{ url_for('main.check') }}" class="card" novalidate>
+  <div class="field">
+    <label for="site_url">Адрес сайта</label>
+    <input id="site_url" name="site_url" type="url" inputmode="url" autocomplete="off"
+           placeholder="https://example.com" value="{{ site_url }}"
+           {% if errors.site_url %}aria-invalid="true" aria-describedby="site_url_msg"{% else %}aria-describedby="site_url_hint"{% endif %}>
+    <p id="site_url_hint" class="hint">Полный адрес с http:// или https://. Адреса внутренних сетей запрещены.</p>
+    {% if errors.site_url %}<p id="site_url_msg" class="error" role="alert">{{ errors.site_url }}</p>{% endif %}
+  </div>
+  <div class="field">
+    <label class="check" for="consent">
+      <input id="consent" name="consent" type="checkbox"
+             {% if errors.consent %}aria-invalid="true" aria-describedby="consent_msg"{% endif %}>
+      <span>Я подтверждаю, что имею право тестировать этот сайт</span>
+    </label>
+    {% if errors.consent %}<p id="consent_msg" class="error" role="alert">{{ errors.consent }}</p>{% endif %}
+  </div>
+  <button type="submit" class="primary">Запустить проверки</button>
+</form>
+{% endblock %}

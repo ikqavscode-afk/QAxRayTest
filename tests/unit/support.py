@@ -33,3 +33,18 @@ def page(status=200, elapsed_ms=120, url=SITE, headers=None, redirects=None):
 
 def context_for(http):
     return CheckContext(http=http, site_url=SITE)
+
+
+class StubService:
+    """Заглушка RunService для веб-тестов: возвращает отчёт или бросает ошибку."""
+
+    def __init__(self, report=None, error=None):
+        self.report = report
+        self.error = error
+        self.urls = []
+
+    def run(self, url):
+        self.urls.append(url)
+        if self.error:
+            raise self.error
+        return self.report

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Результаты — QAxRayTest{% endblock %}
+{% block content %}
+<h1>Результаты проверки</h1>
+<p class="lead">Сайт: <strong>{{ site_url }}</strong></p>
+<ul class="summary" aria-label="Сводка по статусам">
+  {% for status, count in report.summary.items() %}
+  <li class="status status-{{ status.value|lower }}">{{ status.value }}: {{ count }}</li>
+  {% endfor %}
+</ul>
+<div class="table-wrap">
+<table>
+  <caption class="visually-hidden">Результаты проверок</caption>
+  <thead><tr><th scope="col">ID</th><th scope="col">Проверка</th><th scope="col">Статус</th><th scope="col">Подробности</th></tr></thead>
+  <tbody>
+  {% for r in report.results %}
+  <tr>
+    <th scope="row">{{ r.check_id }}</th>
+    <td>{{ r.title }}</td>
+    <td><span class="status status-{{ r.status.value|lower }}">{{ r.status.value }}</span></td>
+    <td>
+      {% if r.reason %}<p class="reason">Причина: {{ r.reason }}</p>{% endif %}
+      <details>
+        <summary>Показать</summary>
+        <p>Ожидалось: {{ r.expected }}</p>
+        <p>Фактически: {{ r.actual }}</p>
+        {% if r.evidence %}<ul>{% for e in r.evidence %}<li><code>{{ e }}</code></li>{% endfor %}</ul>{% endif %}
+      </details>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p><a class="button" href="{{ url_for('main.index') }}">Новая проверка</a></p>
+{% endblock %}
