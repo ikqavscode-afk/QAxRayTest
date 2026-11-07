@@ -19,12 +19,18 @@ class FakeHttp:
         return self.response
 
 
-def page(status=200, elapsed_ms=120, url=SITE, headers=None, redirects=None):
+HEALTHY_HTML = (
+    '<!DOCTYPE html><html lang="ru"><head><title>Тестовая страница</title></head>'
+    "<body><p>Привет</p></body></html>"
+)
+
+
+def page(status=200, elapsed_ms=120, url=SITE, headers=None, redirects=None, body=None):
     return HttpResponse(
         url=url,
         status_code=status,
         headers={"content-type": "text/html"} if headers is None else headers,
-        body=b"<html></html>",
+        body=HEALTHY_HTML.encode("utf-8") if body is None else body,
         truncated=False,
         elapsed_ms=elapsed_ms,
         redirects=redirects or [],
