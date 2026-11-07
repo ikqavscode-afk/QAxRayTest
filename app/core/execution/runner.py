@@ -26,7 +26,7 @@ class Runner:
             return check.run(context)
         except (HttpClientError, TargetRejectedError) as error:
             return self._blocked(check, str(error).strip() or type(error).__name__)
-        except Exception as error:  # сбой одной проверки не должен ронять запуск
+        except Exception as error:  # noqa: BLE001 - сбой одной проверки не должен ронять запуск
             name = type(error).__name__
             logger.warning("Проверка %s завершилась ошибкой %s", check.check_id, name)
             return self._blocked(check, f"Внутренняя ошибка проверки ({name}): {error}")
