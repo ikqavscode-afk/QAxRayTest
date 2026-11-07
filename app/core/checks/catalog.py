@@ -11,6 +11,7 @@ from app.core.checks.api import (
     ApiStatusIsExpected,
     UnknownPathIsHandled,
 )
+from app.core.checks.auth import LoginFormStructure, LoginIsFound, SignupIsFound
 from app.core.checks.availability import (
     ContentTypeIsHtml,
     HomepageResponds,
@@ -44,6 +45,9 @@ def default_checks() -> list[Check]:
         ButtonsHaveNames(),
         FieldsHaveLabels(),
         KeyboardNavigation(),
+        LoginIsFound(),
+        LoginFormStructure(),
+        SignupIsFound(),
         ApiBaseResponds(),
         ApiStatusIsExpected(),
         ApiContentTypeMatches(),

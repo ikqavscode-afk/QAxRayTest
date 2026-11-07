@@ -23,6 +23,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from app.adapters.browser.guard_proxy import GuardProxy
 from app.core.browser import (
+    AuthForm,
+    AuthSnapshot,
     BrowserBlockedError,
     BrowserCertificateError,
     BrowserError,
@@ -277,6 +279,95 @@ return {descriptor: describe(el), interactive, focusVisible: outline || changed 
   repeat: false};
 """
 MAX_TAB_PRESSES = 50
+# Признаки входа и регистрации. Ничего не вводится и не нажимается; значения полей не читаются.
+# Образцы поиска приходят из проверки (аргументы 0 и 1) и применяются к тексту, aria-label, title и
+# адресу ссылки; в ответ попадают только описатели элементов (тег, id, первый класс).
+AUTH_SCRIPT = """/*auth*/
+const loginRe = new RegExp(arguments[0], 'iu');
+const signupRe = new RegExp(arguments[1], 'iu');
+const visible = (el) => {
+  const rect = el.getBoundingClientRect();
+  const style = getComputedStyle(el);
+  return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden'
+    && style.display !== 'none' && !el.closest('[aria-hidden="true"]');
+};
+const text = (node) => (node.innerText || node.textContent || '').trim();
+const describe = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '')
+  + (el.classList && el.classList.length ? '.' + el.classList[0] : '');
+const labelText = (label) => {
+  const copy = label.cloneNode(true);
+  copy.querySelectorAll('input, select, textarea, button').forEach((n) => n.remove());
+  return (copy.textContent || '').trim();
+};
+const labelSource = (el) => {
+  const labelledby = el.getAttribute('aria-labelledby');
+  if (labelledby) {
+    const joined = labelledby.split(/\\s+/).map((id) => document.getElementById(id))
+      .filter(Boolean).map(text).join(' ').trim();
+    if (joined) return 'aria-labelledby';
+  }
+  if ((el.getAttribute('aria-label') || '').trim()) return 'aria-label';
+  for (const label of Array.from(el.labels || [])) {
+    if (labelText(label)) return label.contains(el) && !label.htmlFor ? 'label-wrap' : 'label-for';
+  }
+  if ((el.getAttribute('title') || '').trim()) return 'title';
+  if ((el.getAttribute('placeholder') || '').trim()) return 'placeholder';
+  return null;
+};
+const haystack = (el) => [text(el).slice(0, 80), el.getAttribute('aria-label') || '',
+  el.getAttribute('title') || '', (el.getAttribute('href') || '').slice(0, 200)].join(' ');
+const loginLinks = [];
+const signupLinks = [];
+const clickable = Array.from(document.querySelectorAll('a[href], button, [role=button], [role=link]'))
+  .filter(visible).slice(0, 400);
+for (const el of clickable) {
+  const h = haystack(el);
+  if (loginRe.test(h)) loginLinks.push(describe(el));
+  if (signupRe.test(h)) signupLinks.push(describe(el));
+}
+const passwordInputs = Array.from(document.querySelectorAll('input[type=password]')).filter(visible);
+const containerOf = (el) => {
+  if (el.form) return el.form;
+  let node = el.parentElement;
+  for (let i = 0; i < 6 && node && node !== document.body; i += 1, node = node.parentElement) {
+    if (node.querySelectorAll('input').length >= 2
+        || node.querySelector('input[type=submit], button[type=submit]')) return node;
+  }
+  return el.parentElement || document.body;
+};
+const containers = [];
+for (const el of passwordInputs) {
+  const container = containerOf(el);
+  if (!containers.includes(container)) containers.push(container);
+}
+const textTypes = ['text', 'email', 'tel', 'number', 'password', 'search', 'url', ''];
+const forms = containers.slice(0, 5).map((container) => {
+  const inputs = Array.from(container.querySelectorAll('input'))
+    .filter((i) => textTypes.includes((i.type || '').toLowerCase()) && visible(i));
+  const passwords = inputs.filter((i) => (i.type || '').toLowerCase() === 'password');
+  const attrs = [container.id, String(container.className || ''), container.getAttribute('name') || '',
+    container.getAttribute('action') || '', container.getAttribute('aria-label') || ''].join(' ');
+  const submits = Array.from(container.querySelectorAll(
+    'button:not([type=button]):not([type=reset]), input[type=submit], input[type=image]'
+  )).filter(visible);
+  return {
+    descriptor: describe(container),
+    passwordCount: passwords.length,
+    newPassword: passwords.some((i) => (i.getAttribute('autocomplete') || '')
+      .toLowerCase().includes('new-password')),
+    signupHint: signupRe.test(attrs),
+    submitCount: submits.length,
+    fields: inputs.slice(0, 10).map((i) => ({
+      kind: 'input:' + ((i.type || 'text').toLowerCase()),
+      descriptor: describe(i),
+      source: labelSource(i),
+    })),
+  };
+});
+return {loginLinks: loginLinks.slice(0, 10), signupLinks: signupLinks.slice(0, 10), forms};
+"""
+MAX_AUTH_LINKS = 10
+MAX_AUTH_FORMS = 5
 MAX_OFFENDERS = 5
 MAX_NAME_LENGTH = 40
 UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_\-:.#]")
@@ -377,6 +468,54 @@ def _buttons_snapshot(raw: Any) -> ButtonsSnapshot:
 def _fields_snapshot(raw: Any) -> FieldsSnapshot:
     total, items = _controls(raw, "input")
     return FieldsSnapshot(total=total, items=items)
+
+
+def _clean_names(raw: Any, limit: int) -> tuple[str, ...]:
+    names = []
+    for item in raw if isinstance(raw, list) else []:
+        if isinstance(item, str):
+            cleaned = UNSAFE_NAME_CHARS.sub("", item)[:MAX_NAME_LENGTH]
+            if cleaned:
+                names.append(cleaned)
+    return tuple(names[:limit])
+
+
+def _count(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+
+
+def _auth_form(raw: Any) -> AuthForm | None:
+    if not isinstance(raw, dict) or not isinstance(raw.get("descriptor"), str):
+        return None
+    descriptor = UNSAFE_NAME_CHARS.sub("", raw["descriptor"])[:MAX_NAME_LENGTH]
+    if not descriptor:
+        return None
+    _, fields = _controls({"items": raw.get("fields")}, "input")
+    return AuthForm(
+        descriptor=descriptor,
+        password_count=_count(raw.get("passwordCount")),
+        new_password=raw.get("newPassword") is True,
+        signup_hint=raw.get("signupHint") is True,
+        submit_count=_count(raw.get("submitCount")),
+        fields=fields[:10],
+    )
+
+
+def _auth_snapshot(raw: Any) -> AuthSnapshot:
+    data = raw if isinstance(raw, dict) else {}
+    forms = [
+        form
+        for form in (
+            _auth_form(entry)
+            for entry in (data["forms"] if isinstance(data.get("forms"), list) else [])
+        )
+        if form is not None
+    ]
+    return AuthSnapshot(
+        login_links=_clean_names(data.get("loginLinks"), MAX_AUTH_LINKS),
+        signup_links=_clean_names(data.get("signupLinks"), MAX_AUTH_LINKS),
+        forms=tuple(forms[:MAX_AUTH_FORMS]),
+    )
 
 
 def _tab_step(raw: Any) -> tuple[FocusStep | None, bool]:
@@ -562,6 +701,16 @@ class SeleniumBrowser:
         except WebDriverException as error:
             raise BrowserError(f"Сбой браузера: {_short(error)}") from error
         return TabSequence(interactive_total=max(interactive_total, 0), steps=tuple(steps))
+
+    def auth_signals(self, login_pattern: str, signup_pattern: str) -> AuthSnapshot:
+        """Ссылки входа и регистрации и формы с полем пароля (только структура, без ввода)."""
+        if self._closed:
+            raise BrowserUnavailableError("Браузер закрыт")
+        try:
+            raw = self._driver.execute_script(AUTH_SCRIPT, login_pattern, signup_pattern)
+        except WebDriverException as error:
+            raise BrowserError(f"Сбой браузера: {_short(error)}") from error
+        return _auth_snapshot(raw)
 
     def _raise_for_error_page(self) -> None:
         """Chrome показывает ошибки как обычную страницу, поэтому распознаём их по разметке."""

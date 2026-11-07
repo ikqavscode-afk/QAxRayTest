@@ -139,6 +139,29 @@ class TabSequence:
     steps: tuple[FocusStep, ...]
 
 
+@dataclass(frozen=True)
+class AuthForm:
+    """Форма с полем пароля: что в ней есть. Значения полей не читаются и не вводятся.
+
+    fields: видимые текстовые поля и поля пароля (ControlInfo.name_source: источник метки)."""
+
+    descriptor: str
+    password_count: int
+    new_password: bool
+    signup_hint: bool
+    submit_count: int
+    fields: tuple[ControlInfo, ...]
+
+
+@dataclass(frozen=True)
+class AuthSnapshot:
+    """Признаки входа и регистрации на странице: описатели ссылок и формы с паролем."""
+
+    login_links: tuple[str, ...]
+    signup_links: tuple[str, ...]
+    forms: tuple[AuthForm, ...]
+
+
 class BrowserPort(Protocol):
     """Один браузер, одна страница. Методы-пробы для проверок добавляются по мере появления проверок.
 
@@ -156,6 +179,8 @@ class BrowserPort(Protocol):
     def form_fields(self, limit: int) -> FieldsSnapshot: ...
 
     def tab_sequence(self, max_presses: int) -> TabSequence: ...
+
+    def auth_signals(self, login_pattern: str, signup_pattern: str) -> AuthSnapshot: ...
 
     def close(self) -> None: ...
 

@@ -20,6 +20,7 @@ from app.core.browser import (
     BrowserBlockedError,
     BrowserCertificateError,
 )
+from app.core.checks.auth import LOGIN_PATTERN, SIGNUP_PATTERN
 from app.core.security.policy import TargetPolicy
 
 pytestmark = pytest.mark.browser
@@ -275,3 +276,54 @@ def test_tab_probe_walks_the_page_with_tab_only_and_judges_focus_indicators(brow
     assert sequence.interactive_total >= 7
     pressed = driver.execute_script("return window.__pressed")
     assert set(pressed) == {"Tab"}  # ни Enter, ни пробела, ни щелчков
+
+
+INJECT_AUTH = """
+document.body.insertAdjacentHTML('beforeend', `
+  <a id="lg" href="/account/login?token=SECRET">Войти</a>
+  <a id="rg" href="/join">Регистрация</a>
+  <a id="other" href="/about">О нас</a>
+  <form id="loginform" action="/session">
+    <label for="u">Почта</label><input id="u" type="email" name="u">
+    <label for="p">Пароль</label><input id="p" type="password" name="p">
+    <button type="submit">Войти</button>
+  </form>
+  <form id="signupform" action="/users">
+    <input id="e" type="email" aria-label="Почта">
+    <input id="p1" type="password" autocomplete="new-password">
+    <input id="p2" type="password">
+    <button>Создать</button>
+  </form>
+  <div id="spa">
+    <input id="su" aria-label="User"><input id="sp" type="password" aria-label="Pass">
+    <button>Go</button>
+  </div>
+  <form id="hiddenform" style="display:none"><input type="password" id="hp"><button>x</button></form>
+`);
+window.__events = [];
+['input', 'change', 'submit', 'click', 'keydown', 'focusin'].forEach((type) =>
+  document.addEventListener(type, (e) => window.__events.push(type), true));
+"""
+
+
+def test_auth_probe_reads_structure_only_and_never_types_clicks_or_submits(browser):
+    browser.open("https://example.com/", DESKTOP)
+    driver = browser._driver
+    driver.execute_script(INJECT_AUTH)
+    snapshot = browser.auth_signals(LOGIN_PATTERN, SIGNUP_PATTERN)
+    assert "a#lg" in snapshot.login_links and "a#rg" in snapshot.signup_links
+    assert "a#other" not in snapshot.login_links + snapshot.signup_links
+    forms = {form.descriptor: form for form in snapshot.forms}
+    assert set(forms) == {"form#loginform", "form#signupform", "div#spa"}  # скрытая форма не в счёт
+    login = forms["form#loginform"]
+    assert login.password_count == 1 and login.submit_count == 1 and not login.signup_hint
+    assert [f.name_source for f in login.fields] == ["label-for", "label-for"]
+    signup = forms["form#signupform"]
+    assert signup.password_count == 2 and signup.new_password and signup.signup_hint
+    spa = forms["div#spa"]  # поля без тега form: форма определяется по ближайшему блоку
+    assert spa.password_count == 1 and spa.submit_count == 1
+    assert (
+        driver.execute_script("return window.__events") == []
+    )  # ничего не вводилось и не нажималось
+    assert driver.execute_script("return document.getElementById('p').value") == ""
+    assert "SECRET" not in repr(snapshot)  # параметры адреса ссылки в результат не попадают

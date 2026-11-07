@@ -57,6 +57,9 @@ class FakeDriver:
         self.tab_start = {"interactiveTotal": 0}
         self.tab_steps = []
         self.tab_error = None
+        self.auth_result = None
+        self.auth_args = None
+        self.auth_error = None
         self.options = options
         self.get_calls = []
         self.rect = None
@@ -93,6 +96,11 @@ class FakeDriver:
         self.page_load_timeout = seconds
 
     def execute_script(self, script, *args):
+        if "/*auth*/" in script:
+            if self.auth_error:
+                raise self.auth_error
+            self.auth_args = args
+            return self.auth_result
         if "/*tab-start*/" in script:
             if self.tab_error:
                 raise self.tab_error
@@ -650,3 +658,78 @@ def test_no_sandbox_mode_adds_the_flags_needed_on_throwaway_ci_machines():
     _, _, drivers = make(no_sandbox=True)
     arguments = drivers[0].options.arguments
     assert "--no-sandbox" in arguments and "--disable-dev-shm-usage" in arguments
+
+
+# Проба auth_signals: ссылки входа и регистрации, формы с паролем. Ничего не вводится и не нажимается
+
+
+def raw_form(descriptor="form#login", **changes):
+    data = {
+        "descriptor": descriptor,
+        "passwordCount": 1,
+        "newPassword": False,
+        "signupHint": False,
+        "submitCount": 1,
+        "fields": [
+            {"kind": "input:text", "descriptor": "input#user", "source": "label-for"},
+            {"kind": "input:password", "descriptor": "input#pass", "source": None},
+        ],
+    }
+    data.update(changes)
+    return data
+
+
+def test_auth_probe_returns_typed_facts_and_passes_the_patterns():
+    browser, _, drivers = make()
+    drivers[0].auth_result = {
+        "loginLinks": ["a#login"],
+        "signupLinks": ["a.join", "button#reg"],
+        "forms": [raw_form(passwordCount=2, newPassword=True)],
+    }
+    snapshot = browser.auth_signals("вход|log in", "регистрация|sign up")
+    assert drivers[0].auth_args == ("вход|log in", "регистрация|sign up")
+    assert snapshot.login_links == ("a#login",) and snapshot.signup_links == (
+        "a.join",
+        "button#reg",
+    )
+    form = snapshot.forms[0]
+    assert form.password_count == 2 and form.new_password and form.submit_count == 1
+    assert form.fields[0].descriptor == "input#user" and form.fields[1].name_source is None
+
+
+def test_auth_probe_cleans_descriptors_and_limits_the_amount_of_data():
+    browser, _, drivers = make()
+    drivers[0].auth_result = {
+        "loginLinks": ["a#x y<script>" + "z" * 100] + [f"a#l{n}" for n in range(50)],
+        "signupLinks": [],
+        "forms": [raw_form(f"form#f{n}") for n in range(20)],
+    }
+    snapshot = browser.auth_signals("a", "b")
+    assert len(snapshot.login_links) <= 10 and len(snapshot.forms) <= 5
+    assert all(
+        len(name) <= 40 and "<" not in name and " " not in name for name in snapshot.login_links
+    )
+
+
+@pytest.mark.parametrize(
+    "bad", [None, "text", [], {"forms": "y", "loginLinks": 5}, {"forms": [1, None]}]
+)
+def test_auth_probe_tolerates_malformed_results(bad):
+    browser, _, drivers = make()
+    drivers[0].auth_result = bad
+    snapshot = browser.auth_signals("a", "b")
+    assert snapshot.login_links == () and snapshot.signup_links == () and snapshot.forms == ()
+
+
+def test_auth_probe_failure_is_a_browser_error():
+    browser, _, drivers = make()
+    drivers[0].auth_error = WebDriverException("Message: javascript error")
+    with pytest.raises(BrowserError):
+        browser.auth_signals("a", "b")
+
+
+def test_auth_probe_after_close_is_refused():
+    browser, _, _ = make()
+    browser.close()
+    with pytest.raises(BrowserUnavailableError):
+        browser.auth_signals("a", "b")

@@ -1,10 +1,12 @@
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from typing import Any, TypeVar
 
 from app.core.browser import DESKTOP, BrowserPort, BrowserUnavailableError, Viewport
 from app.core.browser_session import BrowserSession
 from app.core.html_summary import HtmlSummary, summarize_html
 from app.core.ports import HttpClient, HttpClientError, HttpResponse
 
+T = TypeVar("T")
 UNKNOWN_API_PATH = "/qaxray-unknown-path-check"  # заведомо несуществующий путь для QC-025
 
 
@@ -29,6 +31,7 @@ class CheckContext:
         self.api_paths = api_paths
         self.api_expected_statuses = dict(api_expected_statuses or {})
         self._browser = browser
+        self._cache: dict[str, Any] = {}
         self._homepage: HttpResponse | None = None
         self._homepage_error: HttpClientError | None = None
         self._homepage_html: HtmlSummary | None = None
@@ -95,3 +98,10 @@ class CheckContext:
         if self._browser is None:
             raise BrowserUnavailableError("Браузер не подключён к запуску")
         return self._browser.page(viewport)
+
+    def cached(self, key: str, factory: Callable[[], T]) -> T:
+        """Результат тяжёлой пробы на весь запуск: factory выполняется один раз для ключа."""
+        if key not in self._cache:
+            self._cache[key] = factory()
+        value: T = self._cache[key]
+        return value

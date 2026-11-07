@@ -1,4 +1,5 @@
 from app.core.browser import (
+    AuthSnapshot,
     ButtonsSnapshot,
     FieldsSnapshot,
     ImagesSnapshot,
@@ -91,6 +92,8 @@ class FakeBrowser:
         self.fields_limits = []
         self.tab_result = TabSequence(interactive_total=0, steps=())
         self.tab_limits = []
+        self.auth_snapshot = AuthSnapshot(login_links=(), signup_links=(), forms=())
+        self.auth_calls = []
         self.current = None
         self.overflow_results = {}  # окно -> OverflowInfo; по умолчанию переполнения нет
 
@@ -103,6 +106,10 @@ class FakeBrowser:
                 raise outcome
             return outcome
         return PageInfo(url=url, title="Тест", load_ms=10)
+
+    def auth_signals(self, login_pattern, signup_pattern):
+        self.auth_calls.append((login_pattern, signup_pattern))
+        return self.auth_snapshot
 
     def tab_sequence(self, max_presses):
         self.tab_limits.append(max_presses)
