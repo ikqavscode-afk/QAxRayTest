@@ -1,4 +1,10 @@
-from app.core.checks.api import ApiBaseResponds, UnknownPathIsHandled
+from app.core.checks.api import (
+    ApiBaseResponds,
+    ApiContentTypeMatches,
+    ApiJsonParses,
+    ApiStatusIsExpected,
+    UnknownPathIsHandled,
+)
 from app.core.checks.availability import (
     ContentTypeIsHtml,
     HomepageResponds,
@@ -25,5 +31,8 @@ def default_checks() -> list[Check]:
         LinksAreWellFormed(),
         NavigationFound(),
         ApiBaseResponds(),
+        ApiStatusIsExpected(),
+        ApiContentTypeMatches(),
+        ApiJsonParses(),
         UnknownPathIsHandled(),
     ]
