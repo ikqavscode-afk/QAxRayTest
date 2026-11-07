@@ -5,6 +5,9 @@ from app.schemas.status import CheckStatus
 
 MAX_BUTTONS = 50
 LISTED_BUTTONS = 5
+MAX_TABS = 20
+MIN_TAB_COVERAGE = 0.5
+LISTED_FOCUS = 5
 MAX_FIELDS = 50
 LISTED_FIELDS = 5
 REAL_LABELS = frozenset({"label-for", "label-wrap", "aria-label", "aria-labelledby"})
@@ -92,6 +95,62 @@ class FieldsHaveLabels:
 
     def _skipped(self, reason: str) -> CheckResult:
         return self._result(CheckStatus.SKIPPED, "Не оценивалось", reason=reason)
+
+    def _result(
+        self, status: CheckStatus, actual: str, *, reason: str | None = None
+    ) -> CheckResult:
+        return CheckResult(
+            check_id=self.check_id,
+            title=self.title,
+            status=status,
+            severity=self.severity,
+            expected=self.expected,
+            actual=actual,
+            reason=reason,
+        )
+
+
+class KeyboardNavigation:
+    check_id = "QC-016"
+    title = "Клавиатурная доступность (базовая)"
+    severity = Severity.LOW
+    expected = (
+        "Клавиша Tab (не более 20 нажатий) доходит как минимум до половины интерактивных "
+        "элементов, у них виден индикатор фокуса"
+    )
+
+    def run(self, context: CheckContext) -> CheckResult:
+        sequence = context.browser_page(DESKTOP).tab_sequence(MAX_TABS)
+        if sequence.interactive_total == 0:
+            return self._result(
+                CheckStatus.SKIPPED,
+                "Не оценивалось",
+                reason="На странице нет интерактивных элементов, доступных с клавиатуры",
+            )
+        expected_count = min(sequence.interactive_total, MAX_TABS)
+        reached = [step for step in sequence.steps if step.interactive]
+        problems: list[str] = []
+        if not sequence.steps:
+            problems.append("Tab не переместил фокус ни на один элемент страницы")
+        elif len(reached) * (1 / MIN_TAB_COVERAGE) < expected_count:
+            problems.append(f"Фокус дошёл только до {len(reached)} из {expected_count} элементов")
+        hidden = [step.descriptor for step in reached if not step.focus_visible]
+        if hidden:
+            names = hidden[:LISTED_FOCUS]
+            more = len(hidden) - len(names)
+            listing = ", ".join(names) + (f" и ещё {more}" if more > 0 else "")
+            problems.append(f"Нет видимого индикатора фокуса у: {listing}")
+        if problems:
+            return self._result(
+                CheckStatus.WARNING,
+                "; ".join(problems),
+                reason="Эвристика: обход страницы клавишей Tab стоит проверить вручную "
+                "(ловушки фокуса, скрытые элементы, нестандартные стили)",
+            )
+        return self._result(
+            CheckStatus.PASSED,
+            f"Tab дошёл до {len(reached)} из {expected_count} элементов, индикатор фокуса виден",
+        )
 
     def _result(
         self, status: CheckStatus, actual: str, *, reason: str | None = None

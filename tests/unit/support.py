@@ -4,6 +4,7 @@ from app.core.browser import (
     ImagesSnapshot,
     OverflowInfo,
     PageInfo,
+    TabSequence,
 )
 from app.core.checks.context import CheckContext
 from app.core.ports import HttpResponse
@@ -88,6 +89,8 @@ class FakeBrowser:
         self.buttons_limits = []
         self.fields_snapshot = FieldsSnapshot(total=0, items=())
         self.fields_limits = []
+        self.tab_result = TabSequence(interactive_total=0, steps=())
+        self.tab_limits = []
         self.current = None
         self.overflow_results = {}  # окно -> OverflowInfo; по умолчанию переполнения нет
 
@@ -100,6 +103,10 @@ class FakeBrowser:
                 raise outcome
             return outcome
         return PageInfo(url=url, title="Тест", load_ms=10)
+
+    def tab_sequence(self, max_presses):
+        self.tab_limits.append(max_presses)
+        return self.tab_result
 
     def form_fields(self, limit):
         self.fields_limits.append(limit)

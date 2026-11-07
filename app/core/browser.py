@@ -122,6 +122,23 @@ class FieldsSnapshot:
     items: tuple[ControlInfo, ...]
 
 
+@dataclass(frozen=True)
+class FocusStep:
+    """Элемент, на который перешёл фокус после нажатия Tab; видим ли индикатор фокуса."""
+
+    descriptor: str
+    interactive: bool
+    focus_visible: bool
+
+
+@dataclass(frozen=True)
+class TabSequence:
+    """Результат обхода клавишей Tab: сколько интерактивных элементов на странице и порядок фокуса."""
+
+    interactive_total: int
+    steps: tuple[FocusStep, ...]
+
+
 class BrowserPort(Protocol):
     """Один браузер, одна страница. Методы-пробы для проверок добавляются по мере появления проверок.
 
@@ -137,6 +154,8 @@ class BrowserPort(Protocol):
     def buttons(self, limit: int) -> ButtonsSnapshot: ...
 
     def form_fields(self, limit: int) -> FieldsSnapshot: ...
+
+    def tab_sequence(self, max_presses: int) -> TabSequence: ...
 
     def close(self) -> None: ...
 

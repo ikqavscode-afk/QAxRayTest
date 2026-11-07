@@ -18,6 +18,7 @@ from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 
 from app.adapters.browser.guard_proxy import GuardProxy
@@ -32,10 +33,12 @@ from app.core.browser import (
     ButtonsSnapshot,
     ControlInfo,
     FieldsSnapshot,
+    FocusStep,
     ImageInfo,
     ImagesSnapshot,
     OverflowInfo,
     PageInfo,
+    TabSequence,
     Viewport,
 )
 from app.core.security.policy import TargetPolicy, TargetRejectedError
@@ -212,6 +215,68 @@ return {
   })),
 };
 """
+# Обход клавишей Tab. Отправляется ТОЛЬКО Tab (ни Enter, ни пробела), чтобы ничего не активировать.
+# Перед обходом снимаем стили всех элементов, на которые можно попасть табуляцией; после каждого
+# перехода сравниваем: индикатор фокуса виден, если появился контур, изменился стиль или запущена
+# CSS-анимация (переход) у элемента с фокусом.
+TAB_START_SCRIPT = """/*tab-start*/
+if (document.activeElement && document.activeElement !== document.body) {
+  document.activeElement.blur();
+}
+window.scrollTo(0, 0);
+window.__qaxrayVisited = new WeakSet();
+window.__qaxrayBase = new WeakMap();
+const props = ['outlineStyle', 'outlineWidth', 'outlineColor', 'boxShadow', 'borderTopColor',
+  'borderBottomColor', 'backgroundColor', 'color', 'textDecorationLine'];
+window.__qaxrayProps = props;
+const snap = (node) => { const s = getComputedStyle(node); return props.map((p) => s[p]).join('|'); };
+const focusable = Array.from(document.querySelectorAll(
+  'a[href], button, input, select, textarea, summary, [tabindex], [contenteditable]'
+)).filter((el) => !el.disabled && el.tabIndex >= 0
+  && !(el.tagName === 'INPUT' && (el.type || '').toLowerCase() === 'hidden'));
+focusable.slice(0, 1000).forEach((el) => window.__qaxrayBase.set(el, snap(el)));
+const shown = (el) => {
+  const rect = el.getBoundingClientRect();
+  const style = getComputedStyle(el);
+  return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden'
+    && style.display !== 'none' && !el.closest('[aria-hidden="true"]');
+};
+const radios = new Set();
+let total = 0;
+for (const el of focusable.filter(shown)) {
+  if (el.tagName === 'INPUT' && (el.type || '').toLowerCase() === 'radio' && el.name) {
+    const key = (el.form && el.form.id ? el.form.id : '') + '/' + el.name;
+    if (radios.has(key)) continue;
+    radios.add(key);
+  }
+  total += 1;
+}
+return {interactiveTotal: total};
+"""
+TAB_STEP_SCRIPT = """/*tab-step*/
+const el = document.activeElement;
+if (!el || el === document.body || el === document.documentElement) return null;
+const describe = (node) => node.tagName.toLowerCase() + (node.id ? '#' + node.id : '')
+  + (node.classList.length ? '.' + node.classList[0] : '');
+if (window.__qaxrayVisited.has(el)) {
+  return {descriptor: describe(el), interactive: true, focusVisible: true, repeat: true};
+}
+window.__qaxrayVisited.add(el);
+const style = getComputedStyle(el);
+const props = window.__qaxrayProps;
+const now = props.map((p) => style[p]).join('|');
+const base = window.__qaxrayBase.get(el);
+const outline = style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0;
+const changed = base !== undefined && base !== now;
+const animating = typeof el.getAnimations === 'function' && el.getAnimations().length > 0;
+const tag = el.tagName.toLowerCase();
+const role = (el.getAttribute('role') || '').toLowerCase();
+const interactive = ['a', 'button', 'input', 'select', 'textarea', 'summary'].includes(tag)
+  || ['button', 'link', 'tab', 'menuitem', 'checkbox', 'switch', 'radio', 'option'].includes(role);
+return {descriptor: describe(el), interactive, focusVisible: outline || changed || animating,
+  repeat: false};
+"""
+MAX_TAB_PRESSES = 50
 MAX_OFFENDERS = 5
 MAX_NAME_LENGTH = 40
 UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_\-:.#]")
@@ -312,6 +377,26 @@ def _buttons_snapshot(raw: Any) -> ButtonsSnapshot:
 def _fields_snapshot(raw: Any) -> FieldsSnapshot:
     total, items = _controls(raw, "input")
     return FieldsSnapshot(total=total, items=items)
+
+
+def _tab_step(raw: Any) -> tuple[FocusStep | None, bool]:
+    """Один шаг фокуса: (шаг, продолжать ли). Неожиданный или повторный результат останавливает обход."""
+    if not isinstance(raw, dict) or raw.get("repeat") is True:
+        return None, False
+    descriptor = raw.get("descriptor")
+    if not isinstance(descriptor, str):
+        return None, False
+    cleaned = UNSAFE_NAME_CHARS.sub("", descriptor)[:MAX_NAME_LENGTH]
+    if not cleaned:
+        return None, False
+    return (
+        FocusStep(
+            descriptor=cleaned,
+            interactive=bool(raw.get("interactive")),
+            focus_visible=bool(raw.get("focusVisible")),
+        ),
+        True,
+    )
 
 
 def _chrome_driver(options: ChromeOptions) -> Any:
@@ -445,6 +530,32 @@ class SeleniumBrowser:
         except WebDriverException as error:
             raise BrowserError(f"Сбой браузера: {_short(error)}") from error
         return _fields_snapshot(raw)
+
+    def tab_sequence(self, max_presses: int) -> TabSequence:
+        """Обход страницы клавишей Tab: интерактивные элементы и порядок фокуса.
+
+        Нажимается только Tab, не более max_presses раз (и не более жёсткого предела);
+        обход заканчивается, когда фокус покидает страницу или элемент повторяется."""
+        if self._closed:
+            raise BrowserUnavailableError("Браузер закрыт")
+        presses = max(1, min(max_presses, MAX_TAB_PRESSES))
+        try:
+            start = self._driver.execute_script(TAB_START_SCRIPT)
+            total = start.get("interactiveTotal") if isinstance(start, dict) else None
+            interactive_total = (
+                total if isinstance(total, int) and not isinstance(total, bool) else 0
+            )
+            steps: list[FocusStep] = []
+            for _ in range(presses if interactive_total > 0 else 0):
+                self._driver.switch_to.active_element.send_keys(Keys.TAB)
+                step, keep_going = _tab_step(self._driver.execute_script(TAB_STEP_SCRIPT))
+                if step is not None:
+                    steps.append(step)
+                if not keep_going:
+                    break
+        except WebDriverException as error:
+            raise BrowserError(f"Сбой браузера: {_short(error)}") from error
+        return TabSequence(interactive_total=max(interactive_total, 0), steps=tuple(steps))
 
     def _raise_for_error_page(self) -> None:
         """Chrome показывает ошибки как обычную страницу, поэтому распознаём их по разметке."""

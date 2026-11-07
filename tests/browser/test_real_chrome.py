@@ -214,3 +214,59 @@ def test_form_fields_probe_finds_label_sources_without_page_text(browser):
         assert by_id[unlabeled] is None, unlabeled
     assert "fk" not in by_id and "fs" not in by_id and "fx" not in by_id
     assert not any("Имя" in repr(item) for item in snapshot.items)  # текст не собирается
+
+
+INJECT_FOCUSABLES = """
+document.body.insertAdjacentHTML('afterbegin', `
+  <style>
+    #t3:focus, #t3:focus-visible { outline: none; }
+    #t4:focus, #t4:focus-visible { outline: none; background: yellow; }
+    #t8 { transition: box-shadow .5s; outline: none; }
+    #t8:focus { box-shadow: 0 0 0 4px blue; outline: none; }
+  </style>
+  <div id="qax-tabs">
+    <a id="t1" href="#a">Один</a>
+    <button id="t2">Два</button>
+    <a id="t3" href="#c">Три без индикатора</a>
+    <a id="t4" href="#d">Четыре с фоном</a>
+    <input id="t5" aria-label="Поле">
+    <a id="t6" href="#f" tabindex="-1">Недоступна по Tab</a>
+    <div id="t7" tabindex="0">Панель</div>
+    <button id="t8">Восемь с переходом</button>
+  </div>
+`);
+window.__pressed = [];
+document.addEventListener('keydown', (e) => window.__pressed.push(e.key), true);
+document.addEventListener('click', () => window.__pressed.push('click'), true);
+"""
+
+
+def test_tab_probe_walks_the_page_with_tab_only_and_judges_focus_indicators(browser):
+    browser.open("https://example.com/", DESKTOP)
+    driver = browser._driver
+    driver.execute_script(INJECT_FOCUSABLES)
+    sequence = browser.tab_sequence(20)
+    by_id = {
+        step.descriptor.split("#")[-1].split(".")[0]: step
+        for step in sequence.steps
+        if "#" in step.descriptor
+    }
+    order = [step.descriptor.split("#")[-1].split(".")[0] for step in sequence.steps]
+    assert [name for name in order if name.startswith("t")] == [
+        "t1",
+        "t2",
+        "t3",
+        "t4",
+        "t5",
+        "t7",
+        "t8",
+    ]
+    assert "t6" not in by_id  # tabindex=-1 недоступен с клавиатуры
+    assert by_id["t1"].focus_visible and by_id["t2"].focus_visible and by_id["t5"].focus_visible
+    assert not by_id["t3"].focus_visible  # контур убран, ничего взамен
+    assert by_id["t4"].focus_visible  # контур убран, но фон меняется
+    assert by_id["t8"].focus_visible  # индикатор появляется через CSS-переход
+    assert by_id["t1"].interactive and by_id["t2"].interactive and not by_id["t7"].interactive
+    assert sequence.interactive_total >= 7
+    pressed = driver.execute_script("return window.__pressed")
+    assert set(pressed) == {"Tab"}  # ни Enter, ни пробела, ни щелчков

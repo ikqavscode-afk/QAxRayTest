@@ -4,6 +4,7 @@ import os
 
 import pytest
 from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.webdriver.common.keys import Keys
 
 from app.adapters.browser.selenium_browser import SeleniumBrowser
 from app.core.browser import (
@@ -36,8 +37,26 @@ class FakeProxy:
         self.stopped += 1
 
 
+class FakeActiveElement:
+    def __init__(self, driver):
+        self.driver = driver
+
+    def send_keys(self, *keys):
+        self.driver.sent_keys.extend(keys)
+
+
+class FakeSwitchTo:
+    def __init__(self, driver):
+        self.active_element = FakeActiveElement(driver)
+
+
 class FakeDriver:
     def __init__(self, options=None):
+        self.switch_to = FakeSwitchTo(self)
+        self.sent_keys = []
+        self.tab_start = {"interactiveTotal": 0}
+        self.tab_steps = []
+        self.tab_error = None
         self.options = options
         self.get_calls = []
         self.rect = None
@@ -74,6 +93,12 @@ class FakeDriver:
         self.page_load_timeout = seconds
 
     def execute_script(self, script, *args):
+        if "/*tab-start*/" in script:
+            if self.tab_error:
+                raise self.tab_error
+            return self.tab_start
+        if "/*tab-step*/" in script:
+            return self.tab_steps.pop(0) if self.tab_steps else None
         if "el.labels" in script:
             if self.fields_error:
                 raise self.fields_error
@@ -530,3 +555,83 @@ def test_form_fields_probe_after_close_is_refused():
     browser.close()
     with pytest.raises(BrowserUnavailableError):
         browser.form_fields(50)
+
+
+# Проба tab_sequence: только Tab, ограничение числа нажатий, остановка при выходе или повторе
+
+
+def raw_step(descriptor="a#a", interactive=True, visible=True, repeat=False):
+    return {
+        "descriptor": descriptor,
+        "interactive": interactive,
+        "focusVisible": visible,
+        "repeat": repeat,
+    }
+
+
+def test_tab_probe_presses_only_tab_and_returns_typed_steps():
+    browser, _, drivers = make()
+    drivers[0].tab_start = {"interactiveTotal": 4}
+    drivers[0].tab_steps = [raw_step("a#a"), raw_step("button#b", visible=False), None]
+    sequence = browser.tab_sequence(20)
+    assert sequence.interactive_total == 4
+    assert [step.descriptor for step in sequence.steps] == ["a#a", "button#b"]
+    assert [step.focus_visible for step in sequence.steps] == [True, False]
+    assert drivers[0].sent_keys == [Keys.TAB] * 3  # третье нажатие вывело фокус со страницы
+    assert all(key == Keys.TAB for key in drivers[0].sent_keys)  # ни Enter, ни пробела
+
+
+def test_tab_probe_never_presses_more_than_the_limit():
+    browser, _, drivers = make()
+    drivers[0].tab_start = {"interactiveTotal": 50}
+    drivers[0].tab_steps = [raw_step(f"a#{n}") for n in range(50)]
+    sequence = browser.tab_sequence(5)
+    assert len(drivers[0].sent_keys) == 5 and len(sequence.steps) == 5
+
+
+def test_tab_probe_hard_caps_the_limit_for_safety():
+    browser, _, drivers = make()
+    drivers[0].tab_start = {"interactiveTotal": 500}
+    drivers[0].tab_steps = [raw_step(f"a#{n}") for n in range(500)]
+    browser.tab_sequence(10_000)
+    assert len(drivers[0].sent_keys) <= 50
+
+
+def test_tab_probe_stops_when_the_focus_cycle_repeats():
+    browser, _, drivers = make()
+    drivers[0].tab_start = {"interactiveTotal": 2}
+    drivers[0].tab_steps = [raw_step("a#a"), raw_step("a#b"), raw_step("a#a", repeat=True)]
+    sequence = browser.tab_sequence(20)
+    assert [step.descriptor for step in sequence.steps] == ["a#a", "a#b"]
+    assert len(drivers[0].sent_keys) == 3
+
+
+def test_tab_probe_cleans_descriptors_and_tolerates_malformed_steps():
+    browser, _, drivers = make()
+    drivers[0].tab_start = {"interactiveTotal": 3}
+    drivers[0].tab_steps = [raw_step("a#x y<script>" + "z" * 100), "text", raw_step("a#after")]
+    sequence = browser.tab_sequence(20)
+    assert len(sequence.steps) == 1  # на неожиданном результате останавливаемся
+    assert "<" not in sequence.steps[0].descriptor and len(sequence.steps[0].descriptor) <= 40
+
+
+@pytest.mark.parametrize("bad", [None, "text", [], {"interactiveTotal": "x"}])
+def test_tab_probe_tolerates_malformed_start_results(bad):
+    browser, _, drivers = make()
+    drivers[0].tab_start = bad
+    drivers[0].tab_steps = [raw_step("a#a")]
+    assert browser.tab_sequence(20).interactive_total == 0
+
+
+def test_tab_probe_failure_is_a_browser_error():
+    browser, _, drivers = make()
+    drivers[0].tab_error = WebDriverException("Message: javascript error")
+    with pytest.raises(BrowserError):
+        browser.tab_sequence(20)
+
+
+def test_tab_probe_after_close_is_refused():
+    browser, _, _ = make()
+    browser.close()
+    with pytest.raises(BrowserUnavailableError):
+        browser.tab_sequence(20)
