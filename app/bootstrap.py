@@ -2,6 +2,7 @@ import os
 
 import requests
 
+from app.adapters.browser.selenium_browser import selenium_browser_factory
 from app.adapters.http.client import SafeHttpClient
 from app.config import Settings
 from app.core.checks.catalog import default_checks
@@ -30,6 +31,12 @@ def build_run_service(settings: Settings | None = None) -> RunService:
     Без аргумента настройки читаются из переменных окружения QAXRAY_*."""
     settings = settings or Settings.from_env(os.environ)
     policy = TargetPolicy()
+    browser_factory = selenium_browser_factory(
+        policy, page_timeout=settings.browser_page_timeout, headless=settings.browser_headless
+    )  # браузер запускается лениво, только если нужна браузерная проверка
     return RunService(
-        http=build_http_client(settings, policy), policy=policy, checks=default_checks()
+        http=build_http_client(settings, policy),
+        policy=policy,
+        checks=default_checks(),
+        browser_factory=browser_factory,
     )

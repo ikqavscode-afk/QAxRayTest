@@ -22,6 +22,8 @@
 | `QAXRAY_MAX_REDIRECTS` | 0–10 | 5 |
 | `QAXRAY_MAX_RETRIES` | 0–3 | 2 |
 | `QAXRAY_RETRY_DELAY` | 0–5 с | 0,5 |
+| `QAXRAY_BROWSER_PAGE_TIMEOUT` | 5–60 с | 20 |
+| `QAXRAY_BROWSER_HEADLESS` | 0 или 1 | 1 |
 
 - Настройки, отключающей политику адресов (защиту от запросов во внутренние сети), нет и не
   будет; это закреплено тестом.

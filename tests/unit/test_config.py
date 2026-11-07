@@ -165,3 +165,53 @@ def test_bad_environment_stops_the_build_with_a_clear_error(monkeypatch):
     monkeypatch.setenv("QAXRAY_HTTP_TIMEOUT", "abc")
     with pytest.raises(SettingsError, match="QAXRAY_HTTP_TIMEOUT"):
         build_run_service()
+
+
+# Настройки браузера
+
+
+def test_browser_defaults():
+    settings = Settings()
+    assert settings.browser_page_timeout == 20.0
+    assert settings.browser_headless is True
+
+
+def test_browser_variables_are_read():
+    settings = Settings.from_env(
+        {"QAXRAY_BROWSER_PAGE_TIMEOUT": "30", "QAXRAY_BROWSER_HEADLESS": "0"}
+    )
+    assert settings.browser_page_timeout == 30.0
+    assert settings.browser_headless is False
+    assert Settings.from_env({"QAXRAY_BROWSER_HEADLESS": "1"}).browser_headless is True
+
+
+@pytest.mark.parametrize("value", ["4.9", "60.1", "0", "abc", "nan"])
+def test_browser_page_timeout_out_of_range_is_rejected(value):
+    with pytest.raises(SettingsError, match="QAXRAY_BROWSER_PAGE_TIMEOUT"):
+        Settings.from_env({"QAXRAY_BROWSER_PAGE_TIMEOUT": value})
+
+
+@pytest.mark.parametrize("value", ["5", "60"])
+def test_browser_page_timeout_boundaries_are_accepted(value):
+    Settings.from_env({"QAXRAY_BROWSER_PAGE_TIMEOUT": value})
+
+
+@pytest.mark.parametrize("value", ["yes", "true", "2", "-1"])
+def test_browser_headless_accepts_only_zero_or_one(value):
+    with pytest.raises(SettingsError, match="QAXRAY_BROWSER_HEADLESS.*0 или 1"):
+        Settings.from_env({"QAXRAY_BROWSER_HEADLESS": value})
+
+
+def test_browser_and_http_problems_are_reported_together():
+    with pytest.raises(SettingsError) as caught:
+        Settings.from_env({"QAXRAY_HTTP_TIMEOUT": "0", "QAXRAY_BROWSER_HEADLESS": "yes"})
+    assert "QAXRAY_HTTP_TIMEOUT" in str(caught.value)
+    assert "QAXRAY_BROWSER_HEADLESS" in str(caught.value)
+
+
+def test_service_is_built_without_starting_a_browser(monkeypatch):
+    def forbidden(options):
+        raise AssertionError("браузер не должен запускаться при сборке сервиса")
+
+    monkeypatch.setattr("app.adapters.browser.selenium_browser._chrome_driver", forbidden)
+    assert isinstance(build_run_service(Settings()), RunService)

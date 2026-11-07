@@ -98,3 +98,35 @@ def test_unresolvable_hostname_is_rejected():
 def test_rejection_error_names_the_field_and_defaults_to_site_url():
     assert TargetRejectedError("x").field == "site_url"
     assert TargetRejectedError("x", field="api_base_url").field == "api_base_url"
+
+
+# public_addresses: проверенные IP, к которым можно соединяться без повторного DNS
+
+
+def test_public_addresses_returns_validated_dns_answers():
+    policy = TargetPolicy(resolver=lambda host: ["93.184.216.34", "93.184.216.35"])
+    assert policy.public_addresses("site.test") == ["93.184.216.34", "93.184.216.35"]
+
+
+def test_public_addresses_returns_a_public_ip_literal_as_is():
+    assert TargetPolicy().public_addresses("93.184.216.34") == ["93.184.216.34"]
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "169.254.169.254", "10.0.0.5", "::1"])
+def test_public_addresses_rejects_internal_ip_literals(host):
+    with pytest.raises(TargetRejectedError):
+        TargetPolicy().public_addresses(host)
+
+
+def test_public_addresses_rejects_a_host_with_any_internal_answer():
+    policy = TargetPolicy(resolver=lambda host: ["93.184.216.34", "127.0.0.1"])
+    with pytest.raises(TargetRejectedError):
+        policy.public_addresses("mixed.test")
+
+
+def test_public_addresses_rejects_unresolvable_hosts():
+    def broken(host):
+        raise OSError("нет такого имени")
+
+    with pytest.raises(TargetRejectedError):
+        TargetPolicy(resolver=broken).public_addresses("nowhere.test")

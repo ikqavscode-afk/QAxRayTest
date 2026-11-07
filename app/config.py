@@ -4,6 +4,7 @@
 отключающей проверку адресов (защиту от запросов во внутренние сети), намеренно нет."""
 
 from collections.abc import Mapping
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -14,7 +15,9 @@ _RULES = (
     ("max_redirects", "QAXRAY_MAX_REDIRECTS", 0, 10, True),
     ("max_retries", "QAXRAY_MAX_RETRIES", 0, 3, True),
     ("retry_delay", "QAXRAY_RETRY_DELAY", 0.0, 5.0, False),
+    ("browser_page_timeout", "QAXRAY_BROWSER_PAGE_TIMEOUT", 5.0, 60.0, False),
 )
+HEADLESS_VARIABLE = "QAXRAY_BROWSER_HEADLESS"  # 0 или 1
 
 
 class SettingsError(ValueError):
@@ -31,20 +34,31 @@ class Settings(BaseModel):
     max_redirects: int = Field(5, ge=0, le=10)
     max_retries: int = Field(2, ge=0, le=3)
     retry_delay: float = Field(0.5, ge=0.0, le=5.0, allow_inf_nan=False)
+    browser_page_timeout: float = Field(20.0, ge=5.0, le=60.0, allow_inf_nan=False)
+    browser_headless: bool = True
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> "Settings":
         """Читает QAXRAY_*; пустые значения считаются незаданными. Окружение передаётся
         аргументом, чтобы тесты не зависели от настоящего."""
-        values: dict[str, str] = {}
+        values: dict[str, Any] = {}
+        errors: list[str] = []
         for field, variable, _, _, _ in _RULES:
             raw = environ.get(variable, "").strip()
             if raw:
                 values[field] = raw
+        headless = environ.get(HEADLESS_VARIABLE, "").strip()
+        if headless in ("0", "1"):
+            values["browser_headless"] = headless == "1"
+        elif headless:
+            errors.append(f"{HEADLESS_VARIABLE}: нужно 0 или 1")
         try:
-            return cls(**values)  # type: ignore[arg-type]
+            settings = cls(**values)
         except ValidationError as error:
-            raise SettingsError(_describe(error)) from error
+            errors.append(_describe(error))
+        if errors:
+            raise SettingsError("; ".join(errors))
+        return settings
 
 
 def _describe(error: ValidationError) -> str:

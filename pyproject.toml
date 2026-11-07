@@ -3,7 +3,7 @@ name = "qaxraytest"
 version = "0.1.0"
 description = "Безопасная платформа базовых проверок сайтов и API"
 requires-python = ">=3.12"
-dependencies = ["pydantic>=2.7", "requests>=2.32", "flask>=3.0"]
+dependencies = ["pydantic>=2.7", "requests>=2.32", "flask>=3.0", "selenium>=4.20"]
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy", "responses", "types-requests"]
 
@@ -11,7 +11,10 @@ dev = ["pytest", "ruff", "mypy", "responses", "types-requests"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
-markers = ["live: проверки по настоящим адресам; выключены, включаются через QAXRAY_LIVE=1"]
+markers = [
+  "live: проверки по настоящим адресам; выключены, включаются через QAXRAY_LIVE=1",
+  "browser: тесты с настоящим Chrome; выключены, включаются через QAXRAY_BROWSER=1",
+]
 
 [tool.ruff]
 line-length = 100

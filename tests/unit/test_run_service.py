@@ -1,5 +1,6 @@
 import pytest
 
+from app.core.browser import DESKTOP, BrowserUnavailableError
 from app.core.checks.catalog import default_checks
 from app.core.ports import NetworkError
 from app.core.security.policy import TargetPolicy, TargetRejectedError
@@ -7,7 +8,7 @@ from app.schemas.result import CheckResult, Severity
 from app.schemas.status import CheckStatus
 from app.schemas.target import RunTarget
 from app.services.run_service import RunService
-from tests.unit.support import SITE, FakeHttp, page
+from tests.unit.support import SITE, FakeFactory, FakeHttp, page
 
 PUBLIC_IP = "93.184.216.34"
 
@@ -127,3 +128,61 @@ def test_internal_api_address_is_rejected_before_any_request(field):
         service.run(target)
     assert caught.value.field == field  # форма покажет ошибку у нужного поля
     assert http.calls == []
+
+
+class BrowserCheck(SpyCheck):
+    """Проверка, которая открывает страницу в браузере; может упасть."""
+
+    def __init__(self, error=None):
+        super().__init__()
+        self.error = error
+
+    def run(self, context):
+        context.browser_page(DESKTOP)
+        if self.error:
+            raise self.error
+        return super().run(context)
+
+
+def browser_service(check, factory):
+    policy = TargetPolicy(resolver=lambda host: [PUBLIC_IP])
+    return RunService(
+        http=FakeHttp(response=page()), policy=policy, checks=[check], browser_factory=factory
+    )
+
+
+def test_browser_is_not_started_when_no_check_needs_it():
+    factory = FakeFactory()
+    browser_service(SpyCheck(), factory).run(SITE)
+    assert factory.calls == 0
+
+
+def test_browser_check_opens_the_validated_site_address_and_browser_is_closed_after_run():
+    factory = FakeFactory()
+    browser_service(BrowserCheck(), factory).run(SITE)
+    assert factory.browser.opens == [(SITE, DESKTOP)]
+    assert factory.browser.closed == 1
+
+
+def test_browser_is_closed_even_when_the_run_is_interrupted():
+    factory = FakeFactory()
+    service = browser_service(BrowserCheck(error=KeyboardInterrupt()), factory)
+    with pytest.raises(KeyboardInterrupt):
+        service.run(SITE)
+    assert factory.browser.closed == 1
+
+
+def test_browser_failure_blocks_only_the_browser_check():
+    factory = FakeFactory(error=BrowserUnavailableError("нет драйвера"))
+    service = browser_service(BrowserCheck(), factory)
+    report = service.run(SITE)
+    assert report.summary[CheckStatus.BLOCKED] == 1
+    assert "нет драйвера" in report.results[0].reason
+
+
+def test_without_factory_browser_check_is_blocked_as_unavailable():
+    policy = TargetPolicy(resolver=lambda host: [PUBLIC_IP])
+    service = RunService(http=FakeHttp(response=page()), policy=policy, checks=[BrowserCheck()])
+    report = service.run(SITE)
+    assert report.results[0].status is CheckStatus.BLOCKED
+    assert "не подключён" in report.results[0].reason

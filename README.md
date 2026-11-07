@@ -76,6 +76,16 @@ python -m app.cli https://example.com \
 [.env.example](.env.example)), например `export QAXRAY_HTTP_TIMEOUT=15`. Значения вне границ
 отклоняются при запуске. Защита от запросов во внутренние сети не настраивается.
 
+### Браузер
+
+Для браузерных проверок нужен установленный Chrome. Драйвер при первом запуске загружает Selenium
+Manager. Chrome ходит в сеть только через локальный прокси-сторож, который пропускает лишь публичные
+адреса ([ADR-0007](docs/decisions/0007-browser-and-navigation-guard.md)). Проверка с настоящим Chrome:
+
+```bash
+QAXRAY_BROWSER=1 python -m pytest tests/browser -v
+```
+
 ### Веб-интерфейс
 
 ```bash

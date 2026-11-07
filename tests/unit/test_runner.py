@@ -1,5 +1,6 @@
 import pytest
 
+from app.core.browser import BrowserBudgetError, BrowserNetworkError, BrowserUnavailableError
 from app.core.checks.context import CheckContext
 from app.core.execution.runner import Runner
 from app.core.ports import NetworkError, TooManyRedirectsError
@@ -56,6 +57,9 @@ def test_results_keep_original_statuses():
         NetworkError("нет ответа от сайта"),
         TooManyRedirectsError("слишком много перенаправлений"),
         TargetRejectedError("внутренний адрес"),
+        BrowserNetworkError("браузер не открыл страницу"),
+        BrowserUnavailableError("драйвер браузера не найден"),
+        BrowserBudgetError("исчерпан лимит времени браузера"),
     ],
 )
 def test_known_infrastructure_errors_become_blocked(error):

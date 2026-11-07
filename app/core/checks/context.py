@@ -1,5 +1,7 @@
 from collections.abc import Mapping
 
+from app.core.browser import DESKTOP, BrowserPort, BrowserUnavailableError, Viewport
+from app.core.browser_session import BrowserSession
 from app.core.html_summary import HtmlSummary, summarize_html
 from app.core.ports import HttpClient, HttpClientError, HttpResponse
 
@@ -18,6 +20,7 @@ class CheckContext:
         api_base_url: str | None = None,
         api_paths: tuple[str, ...] = (),
         api_expected_statuses: Mapping[str, tuple[int, ...]] | None = None,
+        browser: BrowserSession | None = None,
     ) -> None:
         self.http = http
         self.site_url = site_url
@@ -25,6 +28,7 @@ class CheckContext:
         self.api_base_url = api_base_url
         self.api_paths = api_paths
         self.api_expected_statuses = dict(api_expected_statuses or {})
+        self._browser = browser
         self._homepage: HttpResponse | None = None
         self._homepage_error: HttpClientError | None = None
         self._homepage_html: HtmlSummary | None = None
@@ -85,3 +89,9 @@ class CheckContext:
         if self.api_docs_url is None:
             raise ValueError("Адрес документации API не указан")
         return self.api_get(self.api_docs_url)
+
+    def browser_page(self, viewport: Viewport = DESKTOP) -> BrowserPort:
+        """Браузер с открытой страницей сайта нужной ширины окна (запускается лениво)."""
+        if self._browser is None:
+            raise BrowserUnavailableError("Браузер не подключён к запуску")
+        return self._browser.page(viewport)

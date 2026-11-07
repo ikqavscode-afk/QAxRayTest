@@ -1,3 +1,4 @@
+from app.core.browser import PageInfo
 from app.core.checks.context import CheckContext
 from app.core.ports import HttpResponse
 
@@ -62,3 +63,55 @@ class StubService:
         if self.error:
             raise self.error
         return self.report
+
+
+class FakeBrowser:
+    """Заглушка порта браузера: записывает открытия и закрытия, исходы задаются очередью.
+
+    outcomes: по одному на каждый вызов open: исключение (будет брошено) или PageInfo;
+    когда очередь пуста, открытие успешно."""
+
+    def __init__(self, outcomes=None, close_error=None):
+        self.outcomes = list(outcomes or [])
+        self.close_error = close_error
+        self.opens = []
+        self.closed = 0
+
+    def open(self, url, viewport):
+        self.opens.append((url, viewport))
+        if self.outcomes:
+            outcome = self.outcomes.pop(0)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+        return PageInfo(url=url, title="Тест", load_ms=10)
+
+    def close(self):
+        self.closed += 1
+        if self.close_error:
+            raise self.close_error
+
+
+class FakeFactory:
+    """Фабрика браузеров: считает запуски, может отказать при старте."""
+
+    def __init__(self, browser=None, error=None):
+        self.browser = browser or FakeBrowser()
+        self.error = error
+        self.calls = 0
+
+    def __call__(self):
+        self.calls += 1
+        if self.error:
+            raise self.error
+        return self.browser
+
+
+class FakeClock:
+    """Управляемые часы для проверки лимитов времени без ожидания."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now

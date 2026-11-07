@@ -47,12 +47,21 @@ class TargetPolicy:
         host = parts.hostname
         if not host:
             raise TargetRejectedError("В адресе не указан хост.")
-        for address in self._addresses(host):
+        self.public_addresses(host)
+        return url
+
+    def public_addresses(self, host: str) -> list[str]:
+        """IP-адреса хоста, если все они публичные; иначе отказ.
+
+        Возвращённые адреса можно использовать для соединения напрямую: повторный запрос DNS
+        не нужен, поэтому подмена ответа между проверкой и соединением невозможна."""
+        addresses = self._addresses(host)
+        for address in addresses:
             if not _is_public(address):
                 raise TargetRejectedError(
                     "Адрес указывает на внутреннюю сеть или служебный диапазон."
                 )
-        return url
+        return addresses
 
     def _addresses(self, host: str) -> list[str]:
         try:
