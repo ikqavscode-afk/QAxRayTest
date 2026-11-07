@@ -54,6 +54,9 @@ class FakeDriver:
         self.images_args = None
         self.images_error = None
         self.overflow_result = None
+        self.fields_result = None
+        self.fields_args = None
+        self.fields_error = None
         self.buttons_result = None
         self.buttons_args = None
         self.buttons_error = None
@@ -71,6 +74,11 @@ class FakeDriver:
         self.page_load_timeout = seconds
 
     def execute_script(self, script, *args):
+        if "el.labels" in script:
+            if self.fields_error:
+                raise self.fields_error
+            self.fields_args = args
+            return self.fields_result
         if "aria-labelledby" in script:
             if self.buttons_error:
                 raise self.buttons_error
@@ -469,3 +477,56 @@ def test_buttons_probe_after_close_is_refused():
     browser.close()
     with pytest.raises(BrowserUnavailableError):
         browser.buttons(50)
+
+
+# Проба form_fields: тип поля, описатель и источник метки, без текстов страницы
+
+
+def raw_field(descriptor="input#a", kind="input:text", source="label-for"):
+    return {"kind": kind, "descriptor": descriptor, "source": source}
+
+
+def test_form_fields_probe_returns_typed_facts_and_passes_the_limit():
+    browser, _, drivers = make()
+    drivers[0].fields_result = {
+        "total": 70,
+        "items": [raw_field("input#a"), raw_field("select#s", "select", None)],
+    }
+    snapshot = browser.form_fields(50)
+    assert drivers[0].fields_args == (50,)
+    assert snapshot.total == 70
+    assert snapshot.items[0].name_source == "label-for"
+    assert snapshot.items[1].kind == "select" and snapshot.items[1].name_source is None
+
+
+def test_form_fields_probe_cleans_descriptors_and_ignores_malformed_entries():
+    browser, _, drivers = make()
+    drivers[0].fields_result = {
+        "total": 4,
+        "items": [raw_field("input#a b<script>"), raw_field("x" * 200), raw_field(""), 5, None],
+    }
+    descriptors = [item.descriptor for item in browser.form_fields(50).items]
+    assert all(len(name) <= 40 and "<" not in name and " " not in name for name in descriptors)
+    assert "" not in descriptors
+
+
+@pytest.mark.parametrize("bad", [None, "text", [], {"items": "y"}])
+def test_form_fields_probe_tolerates_malformed_results(bad):
+    browser, _, drivers = make()
+    drivers[0].fields_result = bad
+    snapshot = browser.form_fields(50)
+    assert snapshot.items == () and snapshot.total == 0
+
+
+def test_form_fields_probe_failure_is_a_browser_error():
+    browser, _, drivers = make()
+    drivers[0].fields_error = WebDriverException("Message: javascript error")
+    with pytest.raises(BrowserError):
+        browser.form_fields(50)
+
+
+def test_form_fields_probe_after_close_is_refused():
+    browser, _, _ = make()
+    browser.close()
+    with pytest.raises(BrowserUnavailableError):
+        browser.form_fields(50)

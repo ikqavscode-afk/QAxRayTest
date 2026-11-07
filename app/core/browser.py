@@ -111,6 +111,17 @@ class ButtonsSnapshot:
     items: tuple[ControlInfo, ...]
 
 
+@dataclass(frozen=True)
+class FieldsSnapshot:
+    """Видимые поля форм (input, select, textarea): сколько всего и первые из них.
+
+    У ControlInfo.name_source здесь: label-for, label-wrap, aria-label, aria-labelledby, title,
+    placeholder или None (метки нет)."""
+
+    total: int
+    items: tuple[ControlInfo, ...]
+
+
 class BrowserPort(Protocol):
     """Один браузер, одна страница. Методы-пробы для проверок добавляются по мере появления проверок.
 
@@ -124,6 +135,8 @@ class BrowserPort(Protocol):
     def overflow(self) -> OverflowInfo: ...
 
     def buttons(self, limit: int) -> ButtonsSnapshot: ...
+
+    def form_fields(self, limit: int) -> FieldsSnapshot: ...
 
     def close(self) -> None: ...
 

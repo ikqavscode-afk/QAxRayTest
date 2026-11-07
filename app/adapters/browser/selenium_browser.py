@@ -31,6 +31,7 @@ from app.core.browser import (
     BrowserUnavailableError,
     ButtonsSnapshot,
     ControlInfo,
+    FieldsSnapshot,
     ImageInfo,
     ImagesSnapshot,
     OverflowInfo,
@@ -165,6 +166,52 @@ return {
   })),
 };
 """
+# Видимые поля форм: тип, описатель и источник метки (упрощённый расчёт). Тексты не возвращаются.
+FIELDS_SCRIPT = """
+const limit = arguments[0];
+const visible = (el) => {
+  const rect = el.getBoundingClientRect();
+  const style = getComputedStyle(el);
+  return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden'
+    && style.display !== 'none' && !el.closest('[aria-hidden="true"]');
+};
+const text = (node) => (node.innerText || node.textContent || '').trim();
+const labelText = (label) => {
+  const copy = label.cloneNode(true);
+  copy.querySelectorAll('input, select, textarea, button').forEach((n) => n.remove());
+  return (copy.textContent || '').trim();
+};
+const source = (el) => {
+  const labelledby = el.getAttribute('aria-labelledby');
+  if (labelledby) {
+    const joined = labelledby.split(/\\s+/).map((id) => document.getElementById(id))
+      .filter(Boolean).map(text).join(' ').trim();
+    if (joined) return 'aria-labelledby';
+  }
+  if ((el.getAttribute('aria-label') || '').trim()) return 'aria-label';
+  for (const label of Array.from(el.labels || [])) {
+    if (labelText(label)) return label.contains(el) && label.control === el && !label.htmlFor
+      ? 'label-wrap' : 'label-for';
+  }
+  if ((el.getAttribute('title') || '').trim()) return 'title';
+  if ((el.getAttribute('placeholder') || '').trim()) return 'placeholder';
+  return null;
+};
+const describe = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '')
+  + (el.classList.length ? '.' + el.classList[0] : '');
+const skipped = ['hidden', 'submit', 'button', 'reset', 'image'];
+const fields = Array.from(document.querySelectorAll('input, select, textarea'))
+  .filter((el) => !(el.tagName === 'INPUT' && skipped.includes((el.type || '').toLowerCase())))
+  .filter(visible);
+return {
+  total: fields.length,
+  items: fields.slice(0, limit).map((el) => ({
+    kind: el.tagName.toLowerCase() + (el.tagName === 'INPUT' ? ':' + (el.type || 'text') : ''),
+    descriptor: describe(el),
+    source: source(el),
+  })),
+};
+"""
 MAX_OFFENDERS = 5
 MAX_NAME_LENGTH = 40
 UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_\-:.#]")
@@ -229,7 +276,8 @@ def _overflow_info(raw: Any) -> OverflowInfo:
     )
 
 
-def _buttons_snapshot(raw: Any) -> ButtonsSnapshot:
+def _controls(raw: Any, default_kind: str) -> tuple[int, tuple[ControlInfo, ...]]:
+    """Общий разбор списка элементов из пробы: описатели очищаются, мусор отбрасывается."""
     entries = raw.get("items") if isinstance(raw, dict) else None
     items: list[ControlInfo] = []
     for entry in entries if isinstance(entries, list) else []:
@@ -242,7 +290,9 @@ def _buttons_snapshot(raw: Any) -> ButtonsSnapshot:
         kind = entry.get("kind")
         items.append(
             ControlInfo(
-                kind=UNSAFE_NAME_CHARS.sub("", kind)[:20] if isinstance(kind, str) else "button",
+                kind=UNSAFE_NAME_CHARS.sub("", kind)[:20]
+                if isinstance(kind, str)
+                else default_kind,
                 descriptor=descriptor,
                 name_source=UNSAFE_NAME_CHARS.sub("", source)[:20]
                 if isinstance(source, str) and source
@@ -251,7 +301,17 @@ def _buttons_snapshot(raw: Any) -> ButtonsSnapshot:
         )
     total = raw.get("total") if isinstance(raw, dict) else None
     count = total if isinstance(total, int) and not isinstance(total, bool) else len(items)
-    return ButtonsSnapshot(total=max(count, len(items)), items=tuple(items))
+    return max(count, len(items)), tuple(items)
+
+
+def _buttons_snapshot(raw: Any) -> ButtonsSnapshot:
+    total, items = _controls(raw, "button")
+    return ButtonsSnapshot(total=total, items=items)
+
+
+def _fields_snapshot(raw: Any) -> FieldsSnapshot:
+    total, items = _controls(raw, "input")
+    return FieldsSnapshot(total=total, items=items)
 
 
 def _chrome_driver(options: ChromeOptions) -> Any:
@@ -375,6 +435,16 @@ class SeleniumBrowser:
         except WebDriverException as error:
             raise BrowserError(f"Сбой браузера: {_short(error)}") from error
         return _buttons_snapshot(raw)
+
+    def form_fields(self, limit: int) -> FieldsSnapshot:
+        """Видимые поля форм текущей страницы и источник их метки."""
+        if self._closed:
+            raise BrowserUnavailableError("Браузер закрыт")
+        try:
+            raw = self._driver.execute_script(FIELDS_SCRIPT, max(1, min(limit, MAX_PROBE_LIMIT)))
+        except WebDriverException as error:
+            raise BrowserError(f"Сбой браузера: {_short(error)}") from error
+        return _fields_snapshot(raw)
 
     def _raise_for_error_page(self) -> None:
         """Chrome показывает ошибки как обычную страницу, поэтому распознаём их по разметке."""

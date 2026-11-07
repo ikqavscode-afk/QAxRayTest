@@ -178,3 +178,39 @@ def test_buttons_probe_computes_accessible_name_sources_without_page_text(browse
         assert by_id[unnamed] is None, unnamed
     assert "hidden" not in by_id and "ariahidden" not in by_id  # скрытые не считаются
     assert not any("Отправить" in repr(item) for item in snapshot.items)  # текст не собирается
+
+
+INJECT_FIELDS = """
+document.body.insertAdjacentHTML('beforeend', `
+  <form>
+    <label for="fa">Имя</label><input id="fa">
+    <label>Почта <input id="fb" type="email"></label>
+    <input id="fc" aria-label="Поиск">
+    <span id="fl">Город</span><input id="fd" aria-labelledby="fl">
+    <input id="fe" placeholder="Телефон">
+    <input id="ff" title="Фамилия">
+    <input id="fg">
+    <select id="fh"><option>1</option></select>
+    <textarea id="fi"></textarea>
+    <label for="fj"></label><input id="fj">
+    <label><input id="fm" type="checkbox"> Согласен</label>
+    <input type="hidden" id="fk"><input type="submit" id="fs" value="Go">
+    <input id="fx" style="display:none">
+  </form>
+`);
+"""
+
+
+def test_form_fields_probe_finds_label_sources_without_page_text(browser):
+    browser.open("https://example.com/", DESKTOP)
+    browser._driver.execute_script(INJECT_FIELDS)
+    snapshot = browser.form_fields(50)
+    by_id = {item.descriptor.split("#")[-1]: item.name_source for item in snapshot.items}
+    assert by_id["fa"] == "label-for" and by_id["fb"] == "label-wrap"
+    assert by_id["fm"] == "label-wrap"
+    assert by_id["fc"] == "aria-label" and by_id["fd"] == "aria-labelledby"
+    assert by_id["fe"] == "placeholder" and by_id["ff"] == "title"
+    for unlabeled in ("fg", "fh", "fi", "fj"):
+        assert by_id[unlabeled] is None, unlabeled
+    assert "fk" not in by_id and "fs" not in by_id and "fx" not in by_id
+    assert not any("Имя" in repr(item) for item in snapshot.items)  # текст не собирается

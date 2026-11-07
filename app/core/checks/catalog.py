@@ -1,4 +1,4 @@
-from app.core.checks.accessibility import ButtonsHaveNames
+from app.core.checks.accessibility import ButtonsHaveNames, FieldsHaveLabels
 from app.core.checks.api import (
     ApiBaseResponds,
     ApiContentTypeMatches,
@@ -38,6 +38,7 @@ def default_checks() -> list[Check]:
         InternalLinksAreReachable(),
         NavigationFound(),
         ButtonsHaveNames(),
+        FieldsHaveLabels(),
         ApiBaseResponds(),
         ApiStatusIsExpected(),
         ApiContentTypeMatches(),

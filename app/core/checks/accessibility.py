@@ -5,6 +5,9 @@ from app.schemas.status import CheckStatus
 
 MAX_BUTTONS = 50
 LISTED_BUTTONS = 5
+MAX_FIELDS = 50
+LISTED_FIELDS = 5
+REAL_LABELS = frozenset({"label-for", "label-wrap", "aria-label", "aria-labelledby"})
 
 
 class ButtonsHaveNames:
@@ -38,6 +41,54 @@ class ButtonsHaveNames:
             notes.append(f"имя только из title: {title_only}")
         suffix = f" ({'; '.join(notes)})" if notes else ""
         return self._result(CheckStatus.PASSED, f"Проверено кнопок: {shown}{suffix}")
+
+    def _skipped(self, reason: str) -> CheckResult:
+        return self._result(CheckStatus.SKIPPED, "Не оценивалось", reason=reason)
+
+    def _result(
+        self, status: CheckStatus, actual: str, *, reason: str | None = None
+    ) -> CheckResult:
+        return CheckResult(
+            check_id=self.check_id,
+            title=self.title,
+            status=status,
+            severity=self.severity,
+            expected=self.expected,
+            actual=actual,
+            reason=reason,
+        )
+
+
+class FieldsHaveLabels:
+    check_id = "QC-015"
+    title = "У полей форм есть метки"
+    severity = Severity.MEDIUM
+    expected = "У каждого видимого поля есть label, aria-label или aria-labelledby (до 50 полей)"
+
+    def run(self, context: CheckContext) -> CheckResult:
+        snapshot = context.browser_page(DESKTOP).form_fields(MAX_FIELDS)
+        if snapshot.total == 0:
+            return self._skipped("На странице нет видимых полей форм")
+        shown = len(snapshot.items)
+        problems = [item for item in snapshot.items if item.name_source not in REAL_LABELS]
+        note = f" (первые {shown} из {snapshot.total})" if snapshot.total > shown else ""
+        if problems:
+            parts = [
+                item.descriptor
+                if item.name_source is None
+                else f"{item.descriptor} (только {item.name_source})"
+                for item in problems[:LISTED_FIELDS]
+            ]
+            more = len(problems) - len(parts)
+            listing = ", ".join(parts) + (f" и ещё {more}" if more > 0 else "")
+            return self._result(
+                CheckStatus.WARNING,
+                f"Без подходящей метки {len(problems)} из {shown}: {listing}{note}",
+                reason="Поле без label, aria-label или aria-labelledby не озвучивается программой "
+                "чтения с экрана как нужно; placeholder и title заменяют метку неполностью; "
+                "проверьте вручную",
+            )
+        return self._result(CheckStatus.PASSED, f"Проверено полей: {shown}{note}")
 
     def _skipped(self, reason: str) -> CheckResult:
         return self._result(CheckStatus.SKIPPED, "Не оценивалось", reason=reason)
