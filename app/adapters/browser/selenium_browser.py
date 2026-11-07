@@ -29,6 +29,8 @@ from app.core.browser import (
     BrowserNetworkError,
     BrowserTimeoutError,
     BrowserUnavailableError,
+    ButtonsSnapshot,
+    ControlInfo,
     ImageInfo,
     ImagesSnapshot,
     OverflowInfo,
@@ -113,6 +115,56 @@ if (scrollWidth > viewportWidth + 1 && document.body) {
 }
 return {viewportWidth, scrollWidth, offenders: offenders.slice(0, 5).map((o) => o.name)};
 """
+# Видимые кнопки: тип, описатель и откуда взято доступное имя (упрощённый расчёт имени).
+# Текст кнопок не возвращается.
+BUTTONS_SCRIPT = """
+const limit = arguments[0];
+const visible = (el) => {
+  const rect = el.getBoundingClientRect();
+  const style = getComputedStyle(el);
+  return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden'
+    && style.display !== 'none' && !el.closest('[aria-hidden="true"]');
+};
+const text = (node) => (node.innerText || node.textContent || '').trim();
+const source = (el) => {
+  const labelledby = el.getAttribute('aria-labelledby');
+  if (labelledby) {
+    const joined = labelledby.split(/\\s+/).map((id) => document.getElementById(id))
+      .filter(Boolean).map(text).join(' ').trim();
+    if (joined) return 'aria-labelledby';
+  }
+  if ((el.getAttribute('aria-label') || '').trim()) return 'aria-label';
+  if (el.tagName === 'INPUT') {
+    const type = (el.type || '').toLowerCase();
+    if (type === 'image') { if ((el.alt || '').trim()) return 'alt'; }
+    else if ((el.value || '').trim()) return 'value';
+    else if (type === 'submit' || type === 'reset') return 'default';
+  } else {
+    if (text(el)) return 'text';
+    const img = el.querySelector('img[alt]');
+    if (img && img.alt.trim()) return 'alt';
+    const svgTitle = el.querySelector('svg title');
+    if (svgTitle && text(svgTitle)) return 'svg-title';
+    const inner = el.querySelector('[aria-label]');
+    if (inner && inner.getAttribute('aria-label').trim()) return 'aria-label';
+  }
+  if ((el.getAttribute('title') || '').trim()) return 'title';
+  return null;
+};
+const describe = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '')
+  + (el.classList.length ? '.' + el.classList[0] : '');
+const controls = Array.from(document.querySelectorAll(
+  'button, input[type=button], input[type=submit], input[type=reset], input[type=image], [role=button]'
+)).filter(visible);
+return {
+  total: controls.length,
+  items: controls.slice(0, limit).map((el) => ({
+    kind: el.tagName === 'INPUT' ? 'input' : (el.tagName === 'BUTTON' ? 'button' : 'role-button'),
+    descriptor: describe(el),
+    source: source(el),
+  })),
+};
+"""
 MAX_OFFENDERS = 5
 MAX_NAME_LENGTH = 40
 UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_\-:.#]")
@@ -175,6 +227,31 @@ def _overflow_info(raw: Any) -> OverflowInfo:
         scroll_width=widths[1],
         offenders=tuple(name for name in offenders if name)[:MAX_OFFENDERS],
     )
+
+
+def _buttons_snapshot(raw: Any) -> ButtonsSnapshot:
+    entries = raw.get("items") if isinstance(raw, dict) else None
+    items: list[ControlInfo] = []
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict) or not isinstance(entry.get("descriptor"), str):
+            continue
+        descriptor = UNSAFE_NAME_CHARS.sub("", entry["descriptor"])[:MAX_NAME_LENGTH]
+        if not descriptor:
+            continue
+        source = entry.get("source")
+        kind = entry.get("kind")
+        items.append(
+            ControlInfo(
+                kind=UNSAFE_NAME_CHARS.sub("", kind)[:20] if isinstance(kind, str) else "button",
+                descriptor=descriptor,
+                name_source=UNSAFE_NAME_CHARS.sub("", source)[:20]
+                if isinstance(source, str) and source
+                else None,
+            )
+        )
+    total = raw.get("total") if isinstance(raw, dict) else None
+    count = total if isinstance(total, int) and not isinstance(total, bool) else len(items)
+    return ButtonsSnapshot(total=max(count, len(items)), items=tuple(items))
 
 
 def _chrome_driver(options: ChromeOptions) -> Any:
@@ -288,6 +365,16 @@ class SeleniumBrowser:
         except WebDriverException as error:
             raise BrowserError(f"Сбой браузера: {_short(error)}") from error
         return _overflow_info(raw)
+
+    def buttons(self, limit: int) -> ButtonsSnapshot:
+        """Видимые кнопки текущей страницы и источник их доступного имени."""
+        if self._closed:
+            raise BrowserUnavailableError("Браузер закрыт")
+        try:
+            raw = self._driver.execute_script(BUTTONS_SCRIPT, max(1, min(limit, MAX_PROBE_LIMIT)))
+        except WebDriverException as error:
+            raise BrowserError(f"Сбой браузера: {_short(error)}") from error
+        return _buttons_snapshot(raw)
 
     def _raise_for_error_page(self) -> None:
         """Chrome показывает ошибки как обычную страницу, поэтому распознаём их по разметке."""

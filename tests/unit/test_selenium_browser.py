@@ -54,6 +54,9 @@ class FakeDriver:
         self.images_args = None
         self.images_error = None
         self.overflow_result = None
+        self.buttons_result = None
+        self.buttons_args = None
+        self.buttons_error = None
         self.overflow_error = None
 
     def get(self, url):
@@ -68,6 +71,11 @@ class FakeDriver:
         self.page_load_timeout = seconds
 
     def execute_script(self, script, *args):
+        if "aria-labelledby" in script:
+            if self.buttons_error:
+                raise self.buttons_error
+            self.buttons_args = args
+            return self.buttons_result
         if "scrollWidth" in script:
             if self.overflow_error:
                 raise self.overflow_error
@@ -400,3 +408,64 @@ def test_overflow_probe_after_close_is_refused():
     browser.close()
     with pytest.raises(BrowserUnavailableError):
         browser.overflow()
+
+
+# Проба buttons: тип, описатель и источник имени, без текста кнопок
+
+
+def raw_button(descriptor="button#a", kind="button", source="text"):
+    return {"kind": kind, "descriptor": descriptor, "source": source}
+
+
+def test_buttons_probe_returns_typed_facts_and_passes_the_limit():
+    browser, _, drivers = make()
+    drivers[0].buttons_result = {
+        "total": 60,
+        "items": [raw_button("button#a"), raw_button("input.go", "input", None)],
+    }
+    snapshot = browser.buttons(50)
+    assert drivers[0].buttons_args == (50,)
+    assert snapshot.total == 60
+    assert snapshot.items[0].descriptor == "button#a" and snapshot.items[0].name_source == "text"
+    assert snapshot.items[1].kind == "input" and snapshot.items[1].name_source is None
+
+
+def test_buttons_probe_cleans_descriptors_and_ignores_malformed_entries():
+    browser, _, drivers = make()
+    drivers[0].buttons_result = {
+        "total": 3,
+        "items": [
+            raw_button("button#a b<script>alert(1)</script>"),
+            raw_button("x" * 200),
+            raw_button(""),
+            5,
+            None,
+            {"descriptor": 7},
+        ],
+    }
+    descriptors = [item.descriptor for item in browser.buttons(50).items]
+    assert all(len(name) <= 40 for name in descriptors)
+    assert all("<" not in name and " " not in name and "(" not in name for name in descriptors)
+    assert "" not in descriptors
+
+
+@pytest.mark.parametrize("bad", [None, "text", [], {"items": "y"}])
+def test_buttons_probe_tolerates_malformed_results(bad):
+    browser, _, drivers = make()
+    drivers[0].buttons_result = bad
+    snapshot = browser.buttons(50)
+    assert snapshot.items == () and snapshot.total == 0
+
+
+def test_buttons_probe_failure_is_a_browser_error():
+    browser, _, drivers = make()
+    drivers[0].buttons_error = WebDriverException("Message: javascript error")
+    with pytest.raises(BrowserError):
+        browser.buttons(50)
+
+
+def test_buttons_probe_after_close_is_refused():
+    browser, _, _ = make()
+    browser.close()
+    with pytest.raises(BrowserUnavailableError):
+        browser.buttons(50)

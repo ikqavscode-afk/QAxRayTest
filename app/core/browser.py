@@ -91,6 +91,26 @@ class OverflowInfo:
     offenders: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ControlInfo:
+    """Кнопка или похожий элемент: тип, описатель (тег, id, класс) и откуда взято имя.
+
+    Текст самой кнопки не собирается: в отчёт не должны попадать тексты страницы.
+    name_source: text, aria-label, aria-labelledby, alt, value, default, title или None."""
+
+    kind: str
+    descriptor: str
+    name_source: str | None
+
+
+@dataclass(frozen=True)
+class ButtonsSnapshot:
+    """Видимые кнопки: сколько всего и первые из них (не более заданного лимита)."""
+
+    total: int
+    items: tuple[ControlInfo, ...]
+
+
 class BrowserPort(Protocol):
     """Один браузер, одна страница. Методы-пробы для проверок добавляются по мере появления проверок.
 
@@ -102,6 +122,8 @@ class BrowserPort(Protocol):
     def images(self, limit: int) -> ImagesSnapshot: ...
 
     def overflow(self) -> OverflowInfo: ...
+
+    def buttons(self, limit: int) -> ButtonsSnapshot: ...
 
     def close(self) -> None: ...
 

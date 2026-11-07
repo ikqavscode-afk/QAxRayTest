@@ -1,4 +1,4 @@
-from app.core.browser import ImagesSnapshot, OverflowInfo, PageInfo
+from app.core.browser import ButtonsSnapshot, ImagesSnapshot, OverflowInfo, PageInfo
 from app.core.checks.context import CheckContext
 from app.core.ports import HttpResponse
 
@@ -78,6 +78,8 @@ class FakeBrowser:
         self.closed = 0
         self.images_snapshot = ImagesSnapshot(total=0, items=())
         self.images_limits = []
+        self.buttons_snapshot = ButtonsSnapshot(total=0, items=())
+        self.buttons_limits = []
         self.current = None
         self.overflow_results = {}  # окно -> OverflowInfo; по умолчанию переполнения нет
 
@@ -90,6 +92,10 @@ class FakeBrowser:
                 raise outcome
             return outcome
         return PageInfo(url=url, title="Тест", load_ms=10)
+
+    def buttons(self, limit):
+        self.buttons_limits.append(limit)
+        return self.buttons_snapshot
 
     def overflow(self):
         default = OverflowInfo(self.current.width, self.current.width, ())

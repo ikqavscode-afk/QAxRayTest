@@ -142,3 +142,39 @@ def test_overflow_probe_reports_wide_content_and_ignores_scrollable_containers(b
     assert wide.viewport_width == MOBILE.width
     assert wide.scroll_width >= 1200
     assert "div#qax-wide.banner" in wide.offenders
+
+
+INJECT_BUTTONS = """
+document.body.insertAdjacentHTML('beforeend', `
+  <button id="text">Отправить</button>
+  <button id="aria" aria-label="Закрыть"></button>
+  <span id="lbl">Меню</span><button id="by" aria-labelledby="lbl"></button>
+  <button id="titled" title="Помощь"></button>
+  <button id="svgname"><svg width="10" height="10"><title>Поиск</title><path d="M0 0h10v10z"/></svg></button>
+  <button id="srtext"><span style="position:absolute;clip:rect(0 0 0 0)">Корзина</span></button>
+  <button id="icon"><svg width="10" height="10"><path d="M0 0h10v10z"/></svg></button>
+  <button id="empty"></button>
+  <input type="submit" id="sub">
+  <input type="button" id="plain">
+  <input type="image" id="img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
+  <div role="button" id="role">Раскрыть</div>
+  <button id="hidden" style="display:none"></button>
+  <div aria-hidden="true"><button id="ariahidden"></button></div>
+`);
+"""
+
+
+def test_buttons_probe_computes_accessible_name_sources_without_page_text(browser):
+    browser.open("https://example.com/", DESKTOP)
+    browser._driver.execute_script(INJECT_BUTTONS)
+    snapshot = browser.buttons(50)
+    by_id = {item.descriptor.split("#")[-1]: item.name_source for item in snapshot.items}
+    assert by_id["text"] == "text" and by_id["aria"] == "aria-label"
+    assert by_id["by"] == "aria-labelledby" and by_id["titled"] == "title"
+    assert by_id["svgname"] in ("text", "svg-title")  # имя из <title> значка есть
+    assert by_id["srtext"] == "text"  # текст только для программ чтения тоже имя
+    assert by_id["sub"] == "default" and by_id["role"] == "text"
+    for unnamed in ("icon", "empty", "plain", "img"):
+        assert by_id[unnamed] is None, unnamed
+    assert "hidden" not in by_id and "ariahidden" not in by_id  # скрытые не считаются
+    assert not any("Отправить" in repr(item) for item in snapshot.items)  # текст не собирается
