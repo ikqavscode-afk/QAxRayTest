@@ -3,7 +3,7 @@ import json
 from app.core.checks.context import CheckContext
 from app.core.checks.reporting import without_query
 from app.core.openapi import check_required, load_spec, response_shape
-from app.core.ports import HttpResponse
+from app.core.ports import HttpClientError, HttpResponse
 from app.schemas.result import CheckResult, Severity
 from app.schemas.status import CheckStatus
 
@@ -70,9 +70,26 @@ class _UserPathsCheck(_ApiCheck):
             return NO_PATHS_REASON
         return None
 
+    def _collect(
+        self, context: CheckContext
+    ) -> tuple[list[tuple[str, HttpResponse]], list[tuple[str, HttpClientError]]]:
+        """Ответы по каждому пути отдельно: сбой одного пути не мешает остальным.
+
+        api_get кэширует ответы и сбои: три проверки делают по одному запросу на путь.
+        Если не ответил ни один путь, сбой передаётся исполнителю (результат BLOCKED)."""
+        answered: list[tuple[str, HttpResponse]] = []
+        failed: list[tuple[str, HttpClientError]] = []
+        for path in context.api_paths:
+            try:
+                answered.append((path, context.api_get(context.api_url(path))))
+            except HttpClientError as error:
+                failed.append((path, error))
+        if failed and not answered:
+            raise failed[0][1]
+        return answered, failed
+
     def _responses(self, context: CheckContext) -> list[tuple[str, HttpResponse]]:
-        # api_get кэширует ответы: три проверки делают по одному запросу на путь
-        return [(path, context.api_get(context.api_url(path))) for path in context.api_paths]
+        return self._collect(context)[0]
 
 
 class ApiBaseResponds(_ApiCheck):
@@ -113,8 +130,9 @@ class ApiStatusIsExpected(_UserPathsCheck):
         reason = self._skip_reason(context)
         if reason:
             return self._skipped(reason)
-        responses = self._responses(context)
+        responses, failed = self._collect(context)
         evidence = [_request_line(response) for _, response in responses]
+        evidence += [f"GET {_display_path(path)} -> сетевой сбой" for path, _ in failed]
         wrong = []
         for path, response in responses:
             allowed = context.api_expected_statuses.get(path, ALLOWED_STATUSES)
@@ -123,11 +141,20 @@ class ApiStatusIsExpected(_UserPathsCheck):
                 wrong.append(
                     f"{_display_path(path)} -> {response.status_code} (ожидалось {wanted})"
                 )
+        unreachable = [f"{_display_path(path)} недоступен" for path, _ in failed]
         if wrong:
             return _build(
                 self,
                 CheckStatus.FAILED,
-                "Неожиданный статус: " + "; ".join(wrong),
+                "Неожиданный статус: " + "; ".join(wrong + unreachable),
+                evidence=evidence,
+            )
+        if unreachable:
+            return _build(
+                self,
+                CheckStatus.WARNING,
+                "Нет ответа: " + "; ".join(unreachable),
+                reason="Сетевой сбой по части путей; остальные пути вернули ожидаемый статус",
                 evidence=evidence,
             )
         return _build(

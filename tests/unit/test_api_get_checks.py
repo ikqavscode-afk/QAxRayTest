@@ -209,3 +209,47 @@ def test_qc023_warns_when_body_was_truncated_by_the_limit():
     result = ApiJsonParses().run(context)
     assert result.status is CheckStatus.WARNING
     assert "лимит" in result.reason
+
+
+# PB-045: сетевой сбой на одном пути не блокирует остальные
+
+
+def mixed_context():
+    routes = {"/a": reply(), "/b": NetworkError("обрыв"), "/c": reply(404)}
+    return context_with(["/a", "/b", "/c"], routes)
+
+
+def test_qc021_reports_each_path_when_one_is_unreachable():
+    context, _ = mixed_context()
+    result = ApiStatusIsExpected().run(context)
+    assert result.status is CheckStatus.FAILED  # /c вернул 404: находка не теряется
+    assert "/c" in result.actual and "404" in result.actual
+    assert "/b" in result.actual and "недоступен" in result.actual
+    assert len(result.evidence) == 3
+
+
+def test_qc021_unreachable_path_alone_is_a_warning_not_a_failure():
+    routes = {"/a": reply(), "/b": NetworkError("обрыв")}
+    context, _ = context_with(["/a", "/b"], routes)
+    result = ApiStatusIsExpected().run(context)
+    assert result.status is CheckStatus.WARNING
+    assert "/b" in result.actual
+    assert result.reason
+    assert any("-> 200" in line for line in result.evidence)
+    assert any("/b" in line and "сетевой сбой" in line for line in result.evidence)
+
+
+def test_qc021_all_paths_unreachable_still_reaches_the_runner():
+    routes = {"/a": NetworkError("обрыв"), "/b": NetworkError("обрыв")}
+    context, _ = context_with(["/a", "/b"], routes)
+    with pytest.raises(NetworkError):
+        ApiStatusIsExpected().run(context)
+
+
+@pytest.mark.parametrize("check", [ApiContentTypeMatches, ApiJsonParses])
+def test_other_path_checks_evaluate_reachable_paths(check):
+    routes = {"/a": reply(), "/b": NetworkError("обрыв")}
+    context, _ = context_with(["/a", "/b"], routes)
+    result = check().run(context)
+    assert result.status is CheckStatus.PASSED
+    assert all("/b" not in line for line in result.evidence)
