@@ -18,6 +18,16 @@ RULES = [
     ("внутренние адреса", re.compile(r"figma\.com|qa-faculty|education-services", re.IGNORECASE)),
     ("упоминание ассистента", re.compile(r"cl[a]ude|anth[r]opic", re.IGNORECASE)),
     ("телефон", re.compile(r"\+7\d{10}|\b8\d{10}\b")),
+    (
+        # GitHub блокирует пуш с такими строками, даже если они выдуманы: в тестах их собирают из частей
+        "токеноподобная строка",
+        re.compile(
+            r"xox[baprs]-[A-Za-z0-9-]{10,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}"
+            r"|AIza[0-9A-Za-z_-]{30,}|(?<![A-Za-z0-9])sk-[A-Za-z0-9]{20,}"
+            r"|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
+            r"|-----BEGIN [A-Z ]*PRIVATE KEY-----"
+        ),
+    ),
 ]
 EMAIL = re.compile(r"[\w.+-]+@([\w-]+\.[\w.-]+)")
 SAFE_DOMAINS = {"example.com", "example.org", "users.noreply.github.com"}

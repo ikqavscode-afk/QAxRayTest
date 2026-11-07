@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Protocol
 
 from app.core.execution.runner import ProgressCallback
+from app.core.security.redactor import Redactor
 from app.schemas.report import RunReport
 from app.schemas.run import RunRecord
 from app.schemas.target import RunTarget
@@ -35,9 +36,15 @@ class RunManager:
     в отдельном потоке. Адрес проверяется политикой до создания записи и потока."""
 
     def __init__(
-        self, service: Service, store: RunStore, *, starter: Starter | None = None
+        self,
+        service: Service,
+        store: RunStore,
+        *,
+        starter: Starter | None = None,
+        redactor: Redactor | None = None,
     ) -> None:
         self._service = service
+        self._redactor = redactor or Redactor()  # секреты маскируются до сохранения
         self._store = store
         self._starter = starter  # подмена способа запуска (в тестах: синхронно)
         self._lock = threading.Lock()
@@ -81,10 +88,12 @@ class RunManager:
 
     def _execute(self, run_id: str, target: RunTarget, control: RunControl) -> None:
         def on_progress(partial: RunReport, total: int) -> None:
-            self._store.update_progress(run_id, partial, total)
+            self._store.update_progress(run_id, self._redactor.redact_report(partial), total)
 
         try:
-            report = self._service.run(target, on_progress=on_progress, control=control)
+            report = self._redactor.redact_report(
+                self._service.run(target, on_progress=on_progress, control=control)
+            )
             record = self._store.get(run_id)
             total = record.total if record is not None else len(report.results)
             if control.should_stop() and len(report.results) < total:

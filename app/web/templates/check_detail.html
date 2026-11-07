@@ -2,7 +2,7 @@
 {% block title %}{{ result.check_id }} — QAxRayTest{% endblock %}
 {% block content %}
 <h1>{{ result.check_id }}. {{ result.title }}</h1>
-<p class="lead">Сайт: <strong>{{ site_url }}</strong></p>
+<p class="lead">Сайт: <strong>{{ site_url|redact }}</strong></p>
 <p>
   <span class="status status-{{ result.status.value|lower }}">{{ result.status.value }}</span>
   Важность: {{ severity }}

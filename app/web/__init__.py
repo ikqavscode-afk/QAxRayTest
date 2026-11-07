@@ -1,6 +1,8 @@
 from flask import Flask
 
 from app.bootstrap import build_run_service
+from app.core.security.redactor import Redactor
+from app.logging_setup import configure_logging
 from app.services.run_manager import RunManager, Service
 from app.services.run_store import InMemoryRunStore, RunStore
 from app.web.routes import Manager, bp
@@ -14,7 +16,9 @@ def create_app(
     manager: Manager | None = None,
 ) -> Flask:
     """Фабрика приложения. Службу, хранилище и менеджер запусков можно подставить (в тестах)."""
+    configure_logging()
     app = Flask(__name__)
+    app.jinja_env.filters["redact"] = Redactor().redact_text  # адрес сайта на странице
     store = store or InMemoryRunStore(max_running=MAX_RUNNING)
     manager = manager or RunManager(service or build_run_service(), store)
     app.extensions["run_store"] = store

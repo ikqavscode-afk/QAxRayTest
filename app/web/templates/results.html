@@ -2,7 +2,7 @@
 {% block title %}Результаты — QAxRayTest{% endblock %}
 {% block content %}
 <h1>Результаты проверки</h1>
-<p class="lead">Сайт: <strong>{{ site_url }}</strong></p>
+<p class="lead">Сайт: <strong>{{ site_url|redact }}</strong></p>
 <div id="run" data-run-id="{{ record.run_id }}" data-status="{{ record.status.value }}">
   {% if record.status.value == 'RUNNING' %}
   <section class="card" aria-labelledby="progress-title">

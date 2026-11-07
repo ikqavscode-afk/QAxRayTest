@@ -7,6 +7,8 @@ from pydantic import ValidationError
 from app.bootstrap import build_run_service
 from app.config import SettingsError
 from app.core.security.policy import TargetRejectedError
+from app.core.security.redactor import Redactor
+from app.logging_setup import configure_logging
 from app.schemas.report import RunReport
 from app.schemas.status import CheckStatus
 from app.schemas.target import RunTarget, describe_errors, parse_expectation
@@ -56,6 +58,7 @@ def main(argv: Sequence[str] | None = None, service: Service | None = None) -> i
         help="ожидаемый статус для пути: /ping=201 или /items=200,404 (по умолчанию 200)",
     )
     args = parser.parse_args(argv)
+    configure_logging()
     expected: dict[str, tuple[int, ...]] = {}
     try:
         for text in args.api_expect:
@@ -86,7 +89,7 @@ def main(argv: Sequence[str] | None = None, service: Service | None = None) -> i
     except TargetRejectedError as error:
         print(f"Адрес отклонён: {error}")
         return 2
-    print(format_report(report))
+    print(format_report(Redactor().redact_report(report)))
     problems = report.summary[CheckStatus.FAILED] + report.summary[CheckStatus.BLOCKED]
     return 1 if problems else 0
 
