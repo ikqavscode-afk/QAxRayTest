@@ -84,6 +84,14 @@ python -m flask --app "app.web:create_app" run
 Откройте http://127.0.0.1:5000, введите адрес, подтвердите право на тестирование
 и нажмите «Запустить проверки». Режим `--debug` включайте только на своём компьютере.
 
+## Планирование и процесс
+
+- Продуктовый бэклог и состав MVP: [docs/backlog/product-backlog.md](docs/backlog/product-backlog.md)
+- Стандарты интерфейса и доступности (WCAG 2.2 AA, эвристики Нильсена): [docs/standards/ui-ux-standards.md](docs/standards/ui-ux-standards.md)
+- Процесс (Agile / Scrum, определения готовности и завершённости): [docs/process/scrum.md](docs/process/scrum.md)
+- План ближайшего спринта: [docs/sprints/sprint-03-plan.md](docs/sprints/sprint-03-plan.md)
+- Архитектурные решения: [docs/decisions/](docs/decisions/)
+
 ## Живые тесты (необязательные)
 
 Проверка приложения на настоящих адресах. По умолчанию выключены, в CI не запускаются.

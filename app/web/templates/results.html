@@ -8,7 +8,7 @@
   <li class="status status-{{ status.value|lower }}">{{ status.value }}: {{ count }}</li>
   {% endfor %}
 </ul>
-<div class="table-wrap">
+<div class="table-wrap" tabindex="0" role="region" aria-label="Таблица результатов; на узком экране прокручивается по горизонтали">
 <table>
   <caption class="visually-hidden">Результаты проверок</caption>
   <thead><tr><th scope="col">ID</th><th scope="col">Проверка</th><th scope="col">Статус</th><th scope="col">Подробности</th></tr></thead>
