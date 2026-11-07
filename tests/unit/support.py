@@ -21,7 +21,7 @@ class FakeHttp:
 
 HEALTHY_HTML = (
     '<!DOCTYPE html><html lang="ru"><head><title>Тестовая страница</title></head>'
-    "<body><p>Привет</p></body></html>"
+    '<body><header><nav><a href="/about">О нас</a></nav></header><p>Привет</p></body></html>'
 )
 
 

@@ -23,6 +23,8 @@
 | QC-006 | У страницы есть title |
 | QC-007 | Страница не пуста (видимый текст) |
 | QC-008 | Базовая структура HTML: html, head, body, lang |
+| QC-011 | Ссылки имеют корректный href (до 50 ссылок) |
+| QC-013 | Основная навигация найдена |
 
 Статусы результата: `PASSED`, `FAILED`, `WARNING`, `SKIPPED`, `BLOCKED`
 (смысл каждого: [ADR-0002](docs/decisions/0002-statuses-and-stability.md)).

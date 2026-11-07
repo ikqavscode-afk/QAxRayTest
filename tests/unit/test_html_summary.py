@@ -93,3 +93,20 @@ def test_empty_body_bytes():
 def test_text_is_visible_when_head_end_tag_is_omitted():
     html = "<html><head><title>T</title><body><p>Текст страницы</p></body></html>"
     assert summarize_html(html_bytes(html)).visible_text == "Текст страницы"
+
+
+def test_hrefs_are_collected_trimmed_and_anchors_without_href_are_ignored():
+    html = '<body><a href=" /about ">О нас</a><a href="">Пусто</a><a name="x">Якорь</a><a href>Без</a></body>'
+    assert summarize_html(html_bytes(html)).hrefs == ("/about", "", "")
+
+
+def test_nav_tag_and_navigation_role_count_as_navigation():
+    assert summarize_html(b"<body><nav><a href='/'>x</a></nav></body>").has_navigation
+    assert summarize_html(b"<body><div role='navigation'></div></body>").has_navigation
+
+
+def test_links_in_header_count_as_navigation_but_links_in_body_do_not():
+    assert summarize_html(b"<body><header><a href='/'>x</a></header></body>").has_navigation
+    assert not summarize_html(b"<body><p><a href='/'>x</a></p></body>").has_navigation
+    no_links_in_header = "<body><header>Лого</header><a href='/'>x</a></body>"
+    assert not summarize_html(html_bytes(no_links_in_header)).has_navigation
