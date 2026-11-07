@@ -162,6 +162,21 @@ class AuthSnapshot:
     forms: tuple[AuthForm, ...]
 
 
+@dataclass(frozen=True)
+class RenderedPage:
+    """Снимок страницы после выполнения скриптов (то, что видит пользователь).
+
+    title и lang: None, если пусты. text_length: видимый текст без пробельных лишних символов.
+    visual_count: видимые изображения, графика и вложенные кадры. hrefs: адреса ссылок (до 50)."""
+
+    title: str | None
+    lang: str | None
+    text_length: int
+    visual_count: int
+    hrefs: tuple[str, ...]
+    has_navigation: bool
+
+
 class BrowserPort(Protocol):
     """Один браузер, одна страница. Методы-пробы для проверок добавляются по мере появления проверок.
 
@@ -181,6 +196,8 @@ class BrowserPort(Protocol):
     def tab_sequence(self, max_presses: int) -> TabSequence: ...
 
     def auth_signals(self, login_pattern: str, signup_pattern: str) -> AuthSnapshot: ...
+
+    def rendered_page(self) -> RenderedPage: ...
 
     def close(self) -> None: ...
 

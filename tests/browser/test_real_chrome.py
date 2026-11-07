@@ -327,3 +327,21 @@ def test_auth_probe_reads_structure_only_and_never_types_clicks_or_submits(brows
     )  # ничего не вводилось и не нажималось
     assert driver.execute_script("return document.getElementById('p').value") == ""
     assert "SECRET" not in repr(snapshot)  # параметры адреса ссылки в результат не попадают
+
+
+def test_rendered_probe_waits_for_scripts_and_sees_the_page_as_a_user_does(browser):
+    browser.open("https://example.com/", DESKTOP)
+    browser._driver.execute_script(
+        "document.title = ''; document.documentElement.removeAttribute('lang');"
+        "document.body.innerHTML = '';"
+        "setTimeout(() => {"
+        "  document.title = 'Динамика'; document.documentElement.lang = 'ru';"
+        '  document.body.innerHTML = \'<header><a href="/x">Х</a></header>'
+        '<p>Привет, мир</p><a href="#">пусто</a><img width="40" height="40" src="data:,">\';'
+        "}, 600);"
+    )
+    page = browser.rendered_page()  # ждёт, пока скрипт достроит страницу
+    assert page.title == "Динамика" and page.lang == "ru"
+    assert page.text_length >= len("Привет, мир")
+    assert "/x" in page.hrefs and "#" in page.hrefs
+    assert page.has_navigation is True

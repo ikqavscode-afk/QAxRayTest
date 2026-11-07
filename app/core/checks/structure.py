@@ -1,4 +1,6 @@
+from app.core.browser import RenderedPage
 from app.core.checks.context import CheckContext
+from app.core.checks.refine import Verdict, refine
 from app.schemas.result import CheckResult, Severity
 from app.schemas.status import CheckStatus
 
@@ -11,6 +13,19 @@ class PageHasTitle:
     severity = Severity.MEDIUM
 
     def run(self, context: CheckContext) -> CheckResult:
+        return refine(context, self._from_html(context), self._from_browser)
+
+    @staticmethod
+    def _from_browser(rendered: RenderedPage) -> Verdict:
+        if rendered.title:
+            return Verdict(CheckStatus.PASSED, f"заголовок «{rendered.title[:100]}»")
+        return Verdict(
+            CheckStatus.WARNING,
+            "заголовок не найден",
+            "Заголовка нет ни в исходном HTML, ни на отрисованной странице",
+        )
+
+    def _from_html(self, context: CheckContext) -> CheckResult:
         summary = context.homepage_html()
         if not summary.has_html and not summary.has_body:
             return self._result(CheckStatus.SKIPPED, "Не оценивалось", NOT_HTML_REASON)
@@ -40,6 +55,20 @@ class BodyIsNotEmpty:
     severity = Severity.HIGH
 
     def run(self, context: CheckContext) -> CheckResult:
+        return refine(context, self._from_html(context), self._from_browser)
+
+    @staticmethod
+    def _from_browser(rendered: RenderedPage) -> Verdict:
+        if rendered.text_length:
+            return Verdict(CheckStatus.PASSED, f"видимого текста: {rendered.text_length} символов")
+        if rendered.visual_count:
+            return Verdict(
+                CheckStatus.PASSED,
+                f"текста нет, но есть изображения и графика: {rendered.visual_count}",
+            )
+        return Verdict(CheckStatus.FAILED, "видимого текста и изображений нет")
+
+    def _from_html(self, context: CheckContext) -> CheckResult:
         summary = context.homepage_html()
         if not summary.has_html and not summary.has_body:
             return self._result(CheckStatus.SKIPPED, "Не оценивалось", NOT_HTML_REASON)
@@ -72,6 +101,19 @@ class HtmlStructure:
     severity = Severity.LOW
 
     def run(self, context: CheckContext) -> CheckResult:
+        return refine(context, self._from_html(context), self._from_browser)
+
+    @staticmethod
+    def _from_browser(rendered: RenderedPage) -> Verdict:
+        if rendered.lang:
+            return Verdict(CheckStatus.PASSED, "есть html, head, body и lang")
+        return Verdict(
+            CheckStatus.WARNING,
+            "в отрисованной странице нет атрибута lang",
+            "У страницы не задан язык (атрибут lang)",
+        )
+
+    def _from_html(self, context: CheckContext) -> CheckResult:
         summary = context.homepage_html()
         if not summary.has_html:
             return self._result(

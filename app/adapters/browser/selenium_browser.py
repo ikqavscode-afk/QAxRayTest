@@ -40,6 +40,7 @@ from app.core.browser import (
     ImagesSnapshot,
     OverflowInfo,
     PageInfo,
+    RenderedPage,
     TabSequence,
     Viewport,
 )
@@ -366,6 +367,38 @@ const forms = containers.slice(0, 5).map((container) => {
 });
 return {loginLinks: loginLinks.slice(0, 10), signupLinks: signupLinks.slice(0, 10), forms};
 """
+# Снимок отрисованной страницы после выполнения скриптов. Ожидание «страница успокоилась»: есть
+# заголовок и видимый текст (явное ожидание с ограничением, без sleep).
+RENDERED_READY_SCRIPT = """/*rendered-ready*/
+return document.readyState === 'complete' && document.title.trim().length > 0
+  && ((document.body && document.body.innerText) || '').trim().length > 0;
+"""
+RENDERED_SCRIPT = """/*rendered*/
+const text = ((document.body && document.body.innerText) || '').replace(/\\s+/g, ' ').trim();
+const shown = (el) => {
+  const rect = el.getBoundingClientRect();
+  const style = getComputedStyle(el);
+  return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden'
+    && style.display !== 'none';
+};
+const visual = Array.from(document.querySelectorAll('img, svg, canvas, video, picture, iframe'))
+  .filter(shown).length;
+const hrefs = Array.from(document.querySelectorAll('a[href]')).slice(0, 50)
+  .map((a) => (a.getAttribute('href') || '').trim().slice(0, 300));
+const navigation = !!document.querySelector('nav, [role=navigation]')
+  || document.querySelectorAll('header a[href]').length > 0;
+return {
+  title: (document.title || '').trim().slice(0, 200),
+  lang: (document.documentElement.getAttribute('lang') || '').trim().slice(0, 20),
+  textLength: text.length,
+  visualCount: visual,
+  hrefs,
+  hasNavigation: navigation,
+};
+"""
+MAX_RENDERED_HREFS = 50
+MAX_HREF_LENGTH = 300
+MAX_TITLE_LENGTH = 200
 MAX_AUTH_LINKS = 10
 MAX_AUTH_FORMS = 5
 MAX_OFFENDERS = 5
@@ -518,6 +551,25 @@ def _auth_snapshot(raw: Any) -> AuthSnapshot:
     )
 
 
+def _rendered_page(raw: Any) -> RenderedPage:
+    data = raw if isinstance(raw, dict) else {}
+    title = data.get("title")
+    lang = data.get("lang")
+    hrefs = data.get("hrefs")
+    return RenderedPage(
+        title=title.strip()[:MAX_TITLE_LENGTH] or None if isinstance(title, str) else None,
+        lang=re.sub(r"[^A-Za-z0-9-]", "", lang)[:20] or None if isinstance(lang, str) else None,
+        text_length=_count(data.get("textLength")),
+        visual_count=_count(data.get("visualCount")),
+        hrefs=tuple(
+            href.strip()[:MAX_HREF_LENGTH]
+            for href in (hrefs if isinstance(hrefs, list) else [])
+            if isinstance(href, str)
+        )[:MAX_RENDERED_HREFS],
+        has_navigation=data.get("hasNavigation") is True,
+    )
+
+
 def _tab_step(raw: Any) -> tuple[FocusStep | None, bool]:
     """Один шаг фокуса: (шаг, продолжать ли). Неожиданный или повторный результат останавливает обход."""
     if not isinstance(raw, dict) or raw.get("repeat") is True:
@@ -559,11 +611,13 @@ class SeleniumBrowser:
         page_timeout: float = 20.0,
         headless: bool = True,
         no_sandbox: bool = False,
+        render_wait: float = 3.0,
         driver_factory: DriverFactory | None = None,
         proxy_factory: ProxyFactory = GuardProxy,
     ) -> None:
         self._policy = policy
         self._page_timeout = page_timeout
+        self._render_wait = render_wait
         self._closed = False
         self._downloads = tempfile.mkdtemp(prefix="qaxray-downloads-")
         self._proxy = proxy_factory(policy)
@@ -711,6 +765,22 @@ class SeleniumBrowser:
         except WebDriverException as error:
             raise BrowserError(f"Сбой браузера: {_short(error)}") from error
         return _auth_snapshot(raw)
+
+    def rendered_page(self) -> RenderedPage:
+        """Снимок страницы после скриптов: заголовок, язык, видимый текст, ссылки, навигация."""
+        if self._closed:
+            raise BrowserUnavailableError("Браузер закрыт")
+        try:
+            try:
+                WebDriverWait(self._driver, self._render_wait, poll_frequency=POLL_SECONDS).until(
+                    lambda driver: driver.execute_script(RENDERED_READY_SCRIPT)
+                )
+            except TimeoutException:
+                pass  # страница так и не «успокоилась»: берём то, что есть
+            raw = self._driver.execute_script(RENDERED_SCRIPT)
+        except WebDriverException as error:
+            raise BrowserError(f"Сбой браузера: {_short(error)}") from error
+        return _rendered_page(raw)
 
     def _raise_for_error_page(self) -> None:
         """Chrome показывает ошибки как обычную страницу, поэтому распознаём их по разметке."""

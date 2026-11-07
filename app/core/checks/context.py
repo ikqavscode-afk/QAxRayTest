@@ -1,7 +1,13 @@
 from collections.abc import Callable, Mapping
 from typing import Any, TypeVar
 
-from app.core.browser import DESKTOP, BrowserPort, BrowserUnavailableError, Viewport
+from app.core.browser import (
+    DESKTOP,
+    BrowserPort,
+    BrowserUnavailableError,
+    RenderedPage,
+    Viewport,
+)
 from app.core.browser_session import BrowserSession
 from app.core.html_summary import HtmlSummary, summarize_html
 from app.core.ports import HttpClient, HttpClientError, HttpResponse
@@ -105,3 +111,11 @@ class CheckContext:
             self._cache[key] = factory()
         value: T = self._cache[key]
         return value
+
+    @property
+    def has_browser(self) -> bool:
+        return self._browser is not None
+
+    def rendered_page(self) -> RenderedPage:
+        """Снимок отрисованной страницы; общий на запуск для проверок, которые уточняют результат по HTML."""
+        return self.cached("rendered", lambda: self.browser_page(DESKTOP).rendered_page())

@@ -57,6 +57,10 @@ class FakeDriver:
         self.tab_start = {"interactiveTotal": 0}
         self.tab_steps = []
         self.tab_error = None
+        self.rendered_result = None
+        self.rendered_error = None
+        self.rendered_ready = True
+        self.rendered_waits = 0
         self.auth_result = None
         self.auth_args = None
         self.auth_error = None
@@ -96,6 +100,13 @@ class FakeDriver:
         self.page_load_timeout = seconds
 
     def execute_script(self, script, *args):
+        if "/*rendered-ready*/" in script:
+            self.rendered_waits += 1
+            return self.rendered_ready
+        if "/*rendered*/" in script:
+            if self.rendered_error:
+                raise self.rendered_error
+            return self.rendered_result
         if "/*auth*/" in script:
             if self.auth_error:
                 raise self.auth_error
@@ -733,3 +744,72 @@ def test_auth_probe_after_close_is_refused():
     browser.close()
     with pytest.raises(BrowserUnavailableError):
         browser.auth_signals("a", "b")
+
+
+# Проба rendered_page: снимок отрисованной страницы (после скриптов)
+
+
+def raw_rendered(**changes):
+    data = {
+        "title": "Магазин",
+        "lang": "ru",
+        "textLength": 420,
+        "visualCount": 2,
+        "hrefs": ["/a", "/b#x"],
+        "hasNavigation": True,
+    }
+    data.update(changes)
+    return data
+
+
+def test_rendered_probe_returns_typed_facts():
+    browser, _, drivers = make()
+    drivers[0].rendered_result = raw_rendered()
+    page = browser.rendered_page()
+    assert page.title == "Магазин" and page.lang == "ru"
+    assert page.text_length == 420 and page.visual_count == 2
+    assert page.hrefs == ("/a", "/b#x") and page.has_navigation is True
+
+
+def test_rendered_probe_waits_with_an_explicit_wait_and_still_answers_when_it_times_out():
+    browser, _, drivers = make(render_wait=0.2)
+    drivers[0].rendered_ready = False  # страница так и не «успокоилась»
+    drivers[0].rendered_result = raw_rendered(title="")
+    page = browser.rendered_page()
+    assert page.title is None  # пустой заголовок считается отсутствующим
+    assert drivers[0].rendered_waits >= 1
+
+
+def test_rendered_probe_cleans_and_limits_the_data():
+    browser, _, drivers = make()
+    drivers[0].rendered_result = raw_rendered(
+        title="T" * 500,
+        lang="ru" + "x" * 50,
+        hrefs=[f"/p{n}" for n in range(100)] + ["h" * 1000, 5, None],
+    )
+    page = browser.rendered_page()
+    assert len(page.title) <= 200 and len(page.lang) <= 20
+    assert len(page.hrefs) <= 50 and all(len(href) <= 300 for href in page.hrefs)
+
+
+@pytest.mark.parametrize("bad", [None, "text", [], {"textLength": "x", "hrefs": "y"}])
+def test_rendered_probe_tolerates_malformed_results(bad):
+    browser, _, drivers = make()
+    drivers[0].rendered_result = bad
+    page = browser.rendered_page()
+    assert page.title is None and page.text_length == 0 and page.hrefs == ()
+    assert page.has_navigation is False
+
+
+def test_rendered_probe_failure_is_a_browser_error():
+    browser, _, drivers = make()
+    drivers[0].rendered_error = WebDriverException("Message: javascript error")
+    with pytest.raises(BrowserError):
+        browser.rendered_page()
+
+
+def test_rendered_probe_after_close_is_refused():
+    browser, _, _ = make()
+    browser.close()
+    with pytest.raises(BrowserUnavailableError):
+        browser.rendered_page()

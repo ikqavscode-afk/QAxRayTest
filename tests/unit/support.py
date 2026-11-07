@@ -5,6 +5,7 @@ from app.core.browser import (
     ImagesSnapshot,
     OverflowInfo,
     PageInfo,
+    RenderedPage,
     TabSequence,
 )
 from app.core.checks.context import CheckContext
@@ -110,6 +111,15 @@ class FakeBrowser:
         self.tab_limits = []
         self.auth_snapshot = AuthSnapshot(login_links=(), signup_links=(), forms=())
         self.auth_calls = []
+        self.rendered_snapshot = RenderedPage(
+            title="Заголовок",
+            lang="ru",
+            text_length=120,
+            visual_count=0,
+            hrefs=("/a", "/b"),
+            has_navigation=True,
+        )
+        self.rendered_calls = 0
         self.current = None
         self.overflow_results = {}  # окно -> OverflowInfo; по умолчанию переполнения нет
 
@@ -122,6 +132,10 @@ class FakeBrowser:
                 raise outcome
             return outcome
         return PageInfo(url=url, title="Тест", load_ms=10)
+
+    def rendered_page(self):
+        self.rendered_calls += 1
+        return self.rendered_snapshot
 
     def auth_signals(self, login_pattern, signup_pattern):
         self.auth_calls.append((login_pattern, signup_pattern))

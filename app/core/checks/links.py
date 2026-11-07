@@ -1,6 +1,8 @@
 from urllib.parse import urldefrag, urljoin, urlsplit
 
+from app.core.browser import RenderedPage
 from app.core.checks.context import CheckContext
+from app.core.checks.refine import Verdict, refine
 from app.core.checks.reporting import without_query
 from app.core.html_summary import HtmlSummary
 from app.core.ports import HttpClientError, HttpResponse
@@ -30,6 +32,23 @@ class LinksAreWellFormed:
     severity = Severity.MEDIUM
 
     def run(self, context: CheckContext) -> CheckResult:
+        return refine(context, self._from_html(context), self._from_browser)
+
+    @staticmethod
+    def _from_browser(rendered: RenderedPage) -> Verdict:
+        links = rendered.hrefs[:MAX_LINKS]
+        if not links:
+            return Verdict(CheckStatus.SKIPPED, "ссылок нет", "В отрисованной странице ссылок нет")
+        bad = sum(1 for href in links if _is_placeholder(href))
+        if bad:
+            return Verdict(
+                CheckStatus.WARNING,
+                f"пустых, «#» или javascript: ссылок: {bad} из {len(links)}",
+                f"Ссылок-заглушек: {bad}; проверьте, что у основных ссылок есть реальный адрес",
+            )
+        return Verdict(CheckStatus.PASSED, f"проверено ссылок: {len(links)}, заглушек нет")
+
+    def _from_html(self, context: CheckContext) -> CheckResult:
         summary = context.homepage_html()
         if not _is_html(summary):
             return self._result(CheckStatus.SKIPPED, "Не оценивалось", NOT_HTML_REASON)
@@ -67,6 +86,19 @@ class NavigationFound:
     severity = Severity.LOW
 
     def run(self, context: CheckContext) -> CheckResult:
+        return refine(context, self._from_html(context), self._from_browser)
+
+    @staticmethod
+    def _from_browser(rendered: RenderedPage) -> Verdict:
+        if rendered.has_navigation:
+            return Verdict(CheckStatus.PASSED, "найден nav или блок ссылок в шапке")
+        return Verdict(
+            CheckStatus.WARNING,
+            "навигация не найдена",
+            "Навигации нет ни в исходном HTML, ни на отрисованной странице",
+        )
+
+    def _from_html(self, context: CheckContext) -> CheckResult:
         summary = context.homepage_html()
         if not _is_html(summary):
             return self._result(CheckStatus.SKIPPED, "Не оценивалось", NOT_HTML_REASON)
