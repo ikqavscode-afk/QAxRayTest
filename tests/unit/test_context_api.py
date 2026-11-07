@@ -14,6 +14,7 @@ def test_context_without_api_data_keeps_defaults():
     assert context.api_docs_url is None
     assert context.api_base_url is None
     assert context.api_paths == ()
+    assert context.api_expected_statuses == {}
 
 
 def test_api_url_joins_base_and_path():

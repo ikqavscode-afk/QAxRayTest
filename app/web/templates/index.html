@@ -23,7 +23,7 @@
       <textarea id="api_paths" name="api_paths" rows="4" autocomplete="off" spellcheck="false"
                 placeholder="/health&#10;/products"
                 {% if errors.api_paths %}aria-invalid="true" aria-describedby="api_paths_msg"{% else %}aria-describedby="api_paths_hint"{% endif %}>{{ values.api_paths }}</textarea>
-      <p id="api_paths_hint" class="hint">По одному пути в строке, не более 10, каждый начинается с «/». Выполняются только безопасные GET-запросы.</p>
+      <p id="api_paths_hint" class="hint">По одному пути в строке, не более 10, каждый начинается с «/». Выполняются только безопасные GET-запросы. Ожидаемый статус (по умолчанию 200) задаётся после «|»: /ping | 201 или /items | 200,404.</p>
       {% if errors.api_paths %}<p id="api_paths_msg" class="error" role="alert">{{ errors.api_paths }}</p>{% endif %}
     </div>
   </fieldset>

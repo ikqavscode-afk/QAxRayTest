@@ -51,8 +51,22 @@ pip install -e ".[dev]"
 python -m app.cli https://example.com
 ```
 
+Проверки API необязательны. Они выполняют только безопасные `GET` по указанным путям:
+
+```bash
+python -m app.cli https://example.com \
+  --api-docs https://api.example.com/openapi.json \
+  --api-base https://api.example.com \
+  --api-path /health --api-path /items \
+  --api-expect /health=201
+```
+
+`--api-expect ПУТЬ=СТАТУС[,СТАТУС]` задаёт ожидаемый статус пути (по умолчанию 200).
+В веб-форме то же пишется в строке пути: `/health | 201` или `/items | 200,404`.
+Документация читается только в формате JSON (OpenAPI 3.x или Swagger 2.0).
+
 Код возврата: `0` — нет `FAILED` и `BLOCKED`; `1` — есть `FAILED` или `BLOCKED`;
-`2` — адрес отклонён политикой безопасности.
+`2` — адрес или параметры отклонены.
 
 ### Веб-интерфейс
 

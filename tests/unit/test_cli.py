@@ -123,3 +123,36 @@ def test_main_returns_two_for_invalid_api_path_and_runs_nothing(capsys):
     assert main(["https://example.com", "--api-path", "health"], service=service) == 2
     assert service.targets == []
     assert "--api-path" in capsys.readouterr().out
+
+
+def test_main_passes_expected_statuses_from_api_expect_flags():
+    service = StubService(report_of(result("QC-001", CheckStatus.PASSED)))
+    argv = [
+        "https://example.com",
+        "--api-path",
+        "/ping",
+        "--api-path",
+        "/items?limit=5",
+        "--api-expect",
+        "/ping=201",
+        "--api-expect",
+        "/items?limit=5=200,404",
+    ]
+    assert main(argv, service=service) == 0
+    target = service.targets[0]
+    assert target.api_expected_statuses == {"/ping": (201,), "/items?limit=5": (200, 404)}
+
+
+def test_main_rejects_malformed_api_expect(capsys):
+    service = StubService(report_of())
+    assert main(["https://example.com", "--api-expect", "/ping"], service=service) == 2
+    assert service.targets == []
+    assert "--api-expect" in capsys.readouterr().out
+
+
+def test_main_rejects_api_expect_for_path_that_was_not_given(capsys):
+    service = StubService(report_of())
+    argv = ["https://example.com", "--api-path", "/a", "--api-expect", "/b=201"]
+    assert main(argv, service=service) == 2
+    assert service.targets == []
+    assert "--api-expect" in capsys.readouterr().out

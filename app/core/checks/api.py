@@ -113,7 +113,7 @@ class ApiStatusIsExpected(_UserPathsCheck):
     check_id = "QC-021"
     title = "Безопасный GET-endpoint возвращает ожидаемый статус"
     severity = Severity.HIGH
-    expected = "Код ответа 200 для каждого указанного пути"
+    expected = "Код ответа из ожидаемых для каждого указанного пути (по умолчанию 200)"
 
     def run(self, context: CheckContext) -> CheckResult:
         reason = self._skip_reason(context)
@@ -121,11 +121,14 @@ class ApiStatusIsExpected(_UserPathsCheck):
             return self._skipped(reason)
         responses = self._responses(context)
         evidence = [_request_line(response) for _, response in responses]
-        wrong = [
-            f"{_display_path(path)} -> {response.status_code}"
-            for path, response in responses
-            if response.status_code not in ALLOWED_STATUSES
-        ]
+        wrong = []
+        for path, response in responses:
+            allowed = context.api_expected_statuses.get(path, ALLOWED_STATUSES)
+            if response.status_code not in allowed:
+                wanted = ", ".join(str(code) for code in allowed)
+                wrong.append(
+                    f"{_display_path(path)} -> {response.status_code} (ожидалось {wanted})"
+                )
         if wrong:
             return _build(
                 self,
@@ -136,7 +139,7 @@ class ApiStatusIsExpected(_UserPathsCheck):
         return _build(
             self,
             CheckStatus.PASSED,
-            f"Все пути ({len(responses)}) вернули 200",
+            f"Все пути ({len(responses)}) вернули ожидаемый статус",
             evidence=evidence,
         )
 

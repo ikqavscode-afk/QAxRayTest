@@ -155,3 +155,27 @@ def test_rejected_api_address_is_shown_at_its_own_field(make_client):
     assert 'id="api_base_url_msg"' in html and "внутренний адрес" in html
     assert 'id="site_url_msg"' not in html
     assert "http://127.0.0.1" in html
+
+
+def test_path_line_with_pipe_sets_expected_status(make_client):
+    service = StubService(RunReport())
+    response = post(make_client(service), api_paths="/ping | 201\n/items\n/a?x=1|200,404")
+    assert response.status_code == 200
+    target = service.targets[0]
+    assert target.api_paths == ("/ping", "/items", "/a?x=1")
+    assert target.api_expected_statuses == {"/ping": (201,), "/a?x=1": (200, 404)}
+
+
+def test_bad_expected_status_is_reported_at_paths_field(make_client):
+    service = StubService(RunReport())
+    response = post(make_client(service), api_paths="/ping | abc")
+    html = response.get_data(as_text=True)
+    assert response.status_code == 400
+    assert 'id="api_paths_msg"' in html and "статус" in html
+    assert "/ping | abc" in html
+    assert service.targets == []
+
+
+def test_form_hint_explains_expected_status_syntax(make_client):
+    html = make_client(StubService()).get("/").get_data(as_text=True)
+    assert "/ping | 201" in html

@@ -18,9 +18,15 @@ def reply(status=200, body=b'{"ok": true}', headers=None, truncated=False):
     return replace(response, truncated=True) if truncated else response
 
 
-def context_with(paths, routes=None, base=API):
+def context_with(paths, routes=None, base=API, expected=None):
     http = FakeHttp(routes={API + path: value for path, value in (routes or {}).items()})
-    context = CheckContext(http=http, site_url=SITE, api_base_url=base, api_paths=tuple(paths))
+    context = CheckContext(
+        http=http,
+        site_url=SITE,
+        api_base_url=base,
+        api_paths=tuple(paths),
+        api_expected_statuses=expected,
+    )
     return context, http
 
 
@@ -75,6 +81,33 @@ def test_qc021_fails_and_names_the_path_with_unexpected_status():
 def test_qc021_default_allows_only_200():
     context, _ = context_with(["/a"], {"/a": reply(204)})
     assert ApiStatusIsExpected().run(context).status is CheckStatus.FAILED
+
+
+def test_qc021_accepts_status_expected_for_the_path():
+    context, _ = context_with(["/ping"], {"/ping": reply(201)}, expected={"/ping": (201,)})
+    assert ApiStatusIsExpected().run(context).status is CheckStatus.PASSED
+
+
+def test_qc021_accepts_any_status_from_the_expected_list():
+    routes = {"/a": reply(200), "/b": reply(404)}
+    expected = {"/a": (200, 201), "/b": (200, 404)}
+    context, _ = context_with(["/a", "/b"], routes, expected=expected)
+    assert ApiStatusIsExpected().run(context).status is CheckStatus.PASSED
+
+
+def test_qc021_fails_when_expected_status_differs_and_shows_what_was_expected():
+    context, _ = context_with(["/ping"], {"/ping": reply(200)}, expected={"/ping": (201,)})
+    result = ApiStatusIsExpected().run(context)
+    assert result.status is CheckStatus.FAILED
+    assert "200" in result.actual and "201" in result.actual
+
+
+def test_qc021_paths_without_expectation_still_require_200():
+    routes = {"/ping": reply(201), "/b": reply(201)}
+    context, _ = context_with(["/ping", "/b"], routes, expected={"/ping": (201,)})
+    result = ApiStatusIsExpected().run(context)
+    assert result.status is CheckStatus.FAILED
+    assert "/b" in result.actual and "/ping" not in result.actual
 
 
 def test_qc021_does_not_leak_query_string_into_the_report():

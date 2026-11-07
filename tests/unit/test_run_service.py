@@ -108,11 +108,13 @@ def test_service_passes_api_data_from_target_to_context():
         api_docs_url="https://api.example.com/openapi.json",
         api_base_url="https://api.example.com",
         api_paths=["/health"],
+        api_expected_statuses={"/health": [201]},
     )
     service.run(target)
     assert spy.context.api_docs_url == "https://api.example.com/openapi.json"
     assert spy.context.api_base_url == "https://api.example.com"
     assert spy.context.api_paths == ("/health",)
+    assert spy.context.api_expected_statuses == {"/health": (201,)}
 
 
 @pytest.mark.parametrize("field", ["api_base_url", "api_docs_url"])

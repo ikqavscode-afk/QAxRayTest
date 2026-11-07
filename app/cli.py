@@ -8,13 +8,14 @@ from app.bootstrap import build_run_service
 from app.core.security.policy import TargetRejectedError
 from app.schemas.report import RunReport
 from app.schemas.status import CheckStatus
-from app.schemas.target import RunTarget, describe_errors
+from app.schemas.target import RunTarget, describe_errors, parse_expectation
 
 FIELD_LABELS = {
     "site_url": "адрес сайта",
     "api_docs_url": "--api-docs",
     "api_base_url": "--api-base",
     "api_paths": "--api-path",
+    "api_expected_statuses": "--api-expect",
 }
 
 
@@ -47,13 +48,28 @@ def main(argv: Sequence[str] | None = None, service: Service | None = None) -> i
         default=[],
         help="безопасный GET-путь API, например /health; можно указать несколько раз",
     )
+    parser.add_argument(
+        "--api-expect",
+        action="append",
+        default=[],
+        help="ожидаемый статус для пути: /ping=201 или /items=200,404 (по умолчанию 200)",
+    )
     args = parser.parse_args(argv)
+    expected: dict[str, tuple[int, ...]] = {}
+    try:
+        for text in args.api_expect:
+            path, statuses = parse_expectation(text)
+            expected.setdefault(path, statuses)
+    except ValueError as error:
+        print(f"Параметры отклонены ({FIELD_LABELS['api_expected_statuses']}): {error}")
+        return 2
     try:
         target = RunTarget(
             site_url=args.url,
             api_docs_url=args.api_docs,
             api_base_url=args.api_base,
             api_paths=tuple(args.api_path),
+            api_expected_statuses=expected,
         )
     except ValidationError as error:
         for field, message in describe_errors(error).items():

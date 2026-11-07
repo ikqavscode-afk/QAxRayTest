@@ -30,6 +30,7 @@ class RunService:
             api_docs_url=api_docs_url,
             api_base_url=api_base_url,
             api_paths=target.api_paths,
+            api_expected_statuses=target.api_expected_statuses,
         )
         return Runner(self._checks).run(context)
 

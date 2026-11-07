@@ -1,3 +1,5 @@
+from collections.abc import Mapping
+
 from app.core.html_summary import HtmlSummary, summarize_html
 from app.core.ports import HttpClient, HttpClientError, HttpResponse
 
@@ -15,12 +17,14 @@ class CheckContext:
         api_docs_url: str | None = None,
         api_base_url: str | None = None,
         api_paths: tuple[str, ...] = (),
+        api_expected_statuses: Mapping[str, tuple[int, ...]] | None = None,
     ) -> None:
         self.http = http
         self.site_url = site_url
         self.api_docs_url = api_docs_url
         self.api_base_url = api_base_url
         self.api_paths = api_paths
+        self.api_expected_statuses = dict(api_expected_statuses or {})
         self._homepage: HttpResponse | None = None
         self._homepage_error: HttpClientError | None = None
         self._homepage_html: HtmlSummary | None = None
