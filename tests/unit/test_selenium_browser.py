@@ -50,6 +50,9 @@ class FakeDriver:
         self.quit_calls = 0
         self.error_code = None  # код страницы ошибки Chrome (None: обычная страница)
         self.cdp_calls = []
+        self.images_result = None
+        self.images_args = None
+        self.images_error = None
 
     def get(self, url):
         self.get_calls.append(url)
@@ -63,6 +66,11 @@ class FakeDriver:
         self.page_load_timeout = seconds
 
     def execute_script(self, script, *args):
+        if "document.images" in script:
+            if self.images_error:
+                raise self.images_error
+            self.images_args = args
+            return self.images_result
         if "error-code" in script:
             return self.error_code
         return self.ready_state
@@ -282,3 +290,57 @@ def test_other_chrome_error_page_is_a_network_error():
 def test_normal_page_is_not_mistaken_for_an_error_page():
     browser, _, _ = make()
     assert browser.open(URL, DESKTOP).title == "Тест"
+
+
+# Проба images: факты о видимых изображениях без секретов
+
+
+def probe_result(*items, total=None):
+    return {"total": len(items) if total is None else total, "items": list(items)}
+
+
+def raw(src, complete=True, width=100, lazy=False):
+    return {"src": src, "complete": complete, "naturalWidth": width, "lazy": lazy}
+
+
+def test_images_probe_returns_typed_facts_and_passes_the_limit_to_the_script():
+    browser, _, drivers = make()
+    drivers[0].images_result = probe_result(raw("https://cdn.example.com/a.png"), total=40)
+    snapshot = browser.images(30)
+    assert drivers[0].images_args == (30,)
+    assert snapshot.total == 40
+    assert snapshot.items[0].src == "https://cdn.example.com/a.png"
+    assert snapshot.items[0].natural_width == 100 and snapshot.items[0].complete
+
+
+def test_images_probe_drops_query_strings_fragments_and_data_payloads():
+    browser, _, drivers = make()
+    drivers[0].images_result = probe_result(
+        raw("https://cdn.example.com/a.png?token=SECRET#frag"),
+        raw("data:image/png;base64,AAAA" + "B" * 5000),
+    )
+    sources = [item.src for item in browser.images(30).items]
+    assert sources == ["https://cdn.example.com/a.png", "data:image/png"]
+    assert all("SECRET" not in source for source in sources)
+
+
+def test_images_probe_tolerates_malformed_results():
+    browser, _, drivers = make()
+    for bad in (None, "text", {"total": "x", "items": "y"}, {"items": [1, None, {"src": 5}]}):
+        drivers[0].images_result = bad
+        snapshot = browser.images(30)
+        assert snapshot.items == () or all(item.src for item in snapshot.items)
+
+
+def test_images_probe_failure_is_a_browser_error():
+    browser, _, drivers = make()
+    drivers[0].images_error = WebDriverException("Message: javascript error")
+    with pytest.raises(BrowserError):
+        browser.images(30)
+
+
+def test_images_probe_after_close_is_refused():
+    browser, _, _ = make()
+    browser.close()
+    with pytest.raises(BrowserUnavailableError):
+        browser.images(30)

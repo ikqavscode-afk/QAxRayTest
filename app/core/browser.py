@@ -64,6 +64,24 @@ class PageInfo:
     load_ms: int
 
 
+@dataclass(frozen=True)
+class ImageInfo:
+    """Факты об одном видимом изображении. Адрес без параметров запроса (в них бывают токены)."""
+
+    src: str
+    complete: bool
+    natural_width: int
+    lazy: bool
+
+
+@dataclass(frozen=True)
+class ImagesSnapshot:
+    """Видимые изображения: сколько всего и первые из них (не более заданного лимита)."""
+
+    total: int
+    items: tuple[ImageInfo, ...]
+
+
 class BrowserPort(Protocol):
     """Один браузер, одна страница. Методы-пробы для проверок добавляются по мере появления проверок.
 
@@ -71,6 +89,8 @@ class BrowserPort(Protocol):
     ожиданиями (без sleep), не скачивать файлы и не обращаться к локальным файлам."""
 
     def open(self, url: str, viewport: Viewport) -> PageInfo: ...
+
+    def images(self, limit: int) -> ImagesSnapshot: ...
 
     def close(self) -> None: ...
 

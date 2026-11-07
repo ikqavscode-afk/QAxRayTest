@@ -9,6 +9,7 @@ import threading
 import time
 
 import pytest
+from selenium.webdriver.support.ui import WebDriverWait
 
 from app.adapters.browser.selenium_browser import SeleniumBrowser
 from app.core.browser import (
@@ -85,3 +86,36 @@ def test_page_script_cannot_reach_a_local_service_through_the_browser(browser):
 def test_expired_certificate_is_reported_as_a_certificate_error(browser):
     with pytest.raises(BrowserCertificateError, match="CERT"):
         browser.open("https://expired.badssl.com/", DESKTOP)
+
+
+GOOD_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC"
+INJECT_IMAGES = """
+document.body.insertAdjacentHTML('beforeend', `
+  <img id="good" src="${arguments[0]}" width="40" height="40">
+  <img id="broken" src="https://example.com/qaxray-missing-image.png?token=SECRET" width="40" height="40">
+  <img id="hidden" src="${arguments[0]}" width="40" height="40" style="display:none">
+  <img id="pixel" src="${arguments[0]}" width="1" height="1">
+  <div style="height:6000px"></div>
+  <img id="lazy" loading="lazy" src="https://example.com/qaxray-lazy-missing.png" width="40" height="40">
+`);
+"""
+
+
+def test_images_probe_tells_loaded_broken_lazy_and_ignores_hidden_and_tiny(browser):
+    browser.open("https://example.com/", DESKTOP)
+    driver = browser._driver
+    driver.execute_script(INJECT_IMAGES, GOOD_PNG)
+    WebDriverWait(driver, 15).until(
+        lambda d: d.execute_script(
+            "return ['good', 'broken'].every(id => document.getElementById(id).complete)"
+        )
+    )
+    snapshot = browser.images(30)
+    by_name = {item.src.rsplit("/", 1)[-1]: item for item in snapshot.items}
+    assert snapshot.total == 3  # good, broken, lazy; скрытое и пиксель 1x1 не считаются
+    good = next(item for item in snapshot.items if item.src.startswith("data:image/png"))
+    assert good.complete and good.natural_width == 8
+    broken = by_name["qaxray-missing-image.png"]
+    assert broken.complete and broken.natural_width == 0
+    assert "SECRET" not in broken.src  # параметры запроса в отчёт не попадают
+    assert by_name["qaxray-lazy-missing.png"].lazy

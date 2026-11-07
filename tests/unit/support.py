@@ -1,4 +1,4 @@
-from app.core.browser import PageInfo
+from app.core.browser import ImagesSnapshot, PageInfo
 from app.core.checks.context import CheckContext
 from app.core.ports import HttpResponse
 
@@ -76,6 +76,8 @@ class FakeBrowser:
         self.close_error = close_error
         self.opens = []
         self.closed = 0
+        self.images_snapshot = ImagesSnapshot(total=0, items=())
+        self.images_limits = []
 
     def open(self, url, viewport):
         self.opens.append((url, viewport))
@@ -85,6 +87,10 @@ class FakeBrowser:
                 raise outcome
             return outcome
         return PageInfo(url=url, title="Тест", load_ms=10)
+
+    def images(self, limit):
+        self.images_limits.append(limit)
+        return self.images_snapshot
 
     def close(self):
         self.closed += 1

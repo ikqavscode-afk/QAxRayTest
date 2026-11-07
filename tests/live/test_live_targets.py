@@ -11,12 +11,13 @@ from pathlib import Path
 import pytest
 
 from app.bootstrap import build_run_service
+from app.core.checks.catalog import default_checks
 from app.core.security.policy import TargetRejectedError
 from tests.live.conftest import live_enabled
 from tests.live.loader import LiveCase, LiveTargetsError, load_cases
 
 PAUSE_SECONDS = 1.5
-EXPECTED_CHECKS = 16
+EXPECTED_CHECKS = len(default_checks())
 
 pytestmark = pytest.mark.live
 

@@ -28,6 +28,8 @@ from app.core.browser import (
     BrowserNetworkError,
     BrowserTimeoutError,
     BrowserUnavailableError,
+    ImageInfo,
+    ImagesSnapshot,
     PageInfo,
     Viewport,
 )
@@ -57,6 +59,64 @@ HARDENING_ARGUMENTS = (
     "--no-pings",
     "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
 )
+
+
+# Видимые изображения (не менее 2x2 px, не скрытые): адрес, загружено ли, ширина, ленивое ли.
+IMAGES_SCRIPT = """
+const limit = arguments[0];
+const visible = Array.from(document.images).filter((img) => {
+  const rect = img.getBoundingClientRect();
+  const style = getComputedStyle(img);
+  return rect.width >= 2 && rect.height >= 2
+    && style.visibility !== 'hidden' && style.display !== 'none';
+});
+return {
+  total: visible.length,
+  items: visible.slice(0, limit).map((img) => ({
+    src: img.currentSrc || img.src || '',
+    complete: img.complete,
+    naturalWidth: img.naturalWidth,
+    lazy: img.loading === 'lazy',
+  })),
+};
+"""
+MAX_SRC_LENGTH = 300
+MAX_PROBE_LIMIT = 100
+
+
+def _clean_src(src: str) -> str:
+    """Адрес изображения для отчёта: без параметров запроса, данных и логина в адресе."""
+    if src.startswith("data:"):
+        return src.split(";", 1)[0].split(",", 1)[0][:40]  # только тип содержимого
+    try:
+        parts = urlsplit(src)
+        host = parts.hostname
+        port = f":{parts.port}" if parts.port else ""
+    except ValueError:
+        return "invalid-url"
+    if parts.scheme in ALLOWED_SCHEMES and host:
+        return f"{parts.scheme}://{host}{port}{parts.path}"[:MAX_SRC_LENGTH]
+    return f"{parts.scheme}:" if parts.scheme else src[:MAX_SRC_LENGTH]
+
+
+def _snapshot(raw: Any) -> ImagesSnapshot:
+    entries = raw.get("items") if isinstance(raw, dict) else None
+    items: list[ImageInfo] = []
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict) or not isinstance(entry.get("src"), str) or not entry["src"]:
+            continue
+        width = entry.get("naturalWidth")
+        items.append(
+            ImageInfo(
+                src=_clean_src(entry["src"]),
+                complete=bool(entry.get("complete")),
+                natural_width=int(width) if isinstance(width, int | float) else 0,
+                lazy=bool(entry.get("lazy")),
+            )
+        )
+    total = raw.get("total") if isinstance(raw, dict) else None
+    count = total if isinstance(total, int) and not isinstance(total, bool) else len(items)
+    return ImagesSnapshot(total=max(count, len(items)), items=tuple(items))
 
 
 def _chrome_driver(options: ChromeOptions) -> Any:
@@ -150,6 +210,16 @@ class SeleniumBrowser:
             title=str(self._driver.title),
             load_ms=int((time.monotonic() - started) * 1000),
         )
+
+    def images(self, limit: int) -> ImagesSnapshot:
+        """Видимые изображения текущей страницы (первые `limit`)."""
+        if self._closed:
+            raise BrowserUnavailableError("Браузер закрыт")
+        try:
+            raw = self._driver.execute_script(IMAGES_SCRIPT, max(1, min(limit, MAX_PROBE_LIMIT)))
+        except WebDriverException as error:
+            raise BrowserError(f"Сбой браузера: {_short(error)}") from error
+        return _snapshot(raw)
 
     def _raise_for_error_page(self) -> None:
         """Chrome показывает ошибки как обычную страницу, поэтому распознаём их по разметке."""
