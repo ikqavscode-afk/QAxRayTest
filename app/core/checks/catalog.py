@@ -6,6 +6,7 @@ from app.core.checks.availability import (
     NoRedirectLoop,
 )
 from app.core.checks.base import Check
+from app.core.checks.structure import BodyIsNotEmpty, HtmlStructure, PageHasTitle
 
 
 def default_checks() -> list[Check]:
@@ -16,4 +17,7 @@ def default_checks() -> list[Check]:
         HttpsIsUsed(),
         NoRedirectLoop(),
         ContentTypeIsHtml(),
+        PageHasTitle(),
+        BodyIsNotEmpty(),
+        HtmlStructure(),
     ]

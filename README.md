@@ -20,6 +20,9 @@
 | QC-003 | Используется HTTPS |
 | QC-004 | Нет цикла перенаправлений |
 | QC-005 | Content-Type главной страницы: HTML |
+| QC-006 | У страницы есть title |
+| QC-007 | Страница не пуста (видимый текст) |
+| QC-008 | Базовая структура HTML: html, head, body, lang |
 
 Статусы результата: `PASSED`, `FAILED`, `WARNING`, `SKIPPED`, `BLOCKED`
 (смысл каждого: [ADR-0002](docs/decisions/0002-statuses-and-stability.md)).
