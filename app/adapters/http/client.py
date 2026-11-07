@@ -1,36 +1,14 @@
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from urllib.parse import urljoin
 
 import requests
 
+from app.core.ports import HttpResponse, NetworkError, TooManyRedirectsError
 from app.core.security.policy import TargetPolicy
 
 REDIRECT_CODES = frozenset({301, 302, 303, 307, 308})
 USER_AGENT = "QAxRayTest/0.1"
-
-
-class HttpClientError(Exception):
-    """Базовая ошибка HTTP-клиента."""
-
-
-class NetworkError(HttpClientError):
-    """Сетевой сбой (тайм-аут, обрыв соединения) после всех повторов."""
-
-
-class TooManyRedirectsError(HttpClientError):
-    """Превышено допустимое число перенаправлений."""
-
-
-@dataclass(frozen=True)
-class HttpResponse:
-    url: str
-    status_code: int
-    headers: dict[str, str]
-    body: bytes
-    truncated: bool
-    elapsed_ms: int = 0
-    redirects: list[str] = field(default_factory=list)
 
 
 class SafeHttpClient:
