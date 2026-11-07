@@ -19,7 +19,12 @@ def make_service(http):
 
 def test_default_profile_contains_profile_in_order():
     ids = [check.check_id for check in default_checks()]
-    assert ids == [f"QC-00{number}" for number in range(1, 9)] + ["QC-011", "QC-013"]
+    assert ids == [f"QC-00{number}" for number in range(1, 9)] + [
+        "QC-011",
+        "QC-013",
+        "QC-020",
+        "QC-025",
+    ]
 
 
 def test_check_ids_are_unique():
@@ -29,8 +34,9 @@ def test_check_ids_are_unique():
 
 def test_healthy_site_passes_all_checks():
     report = make_service(FakeHttp(response=page())).run(SITE)
-    assert len(report.results) == 10
+    assert len(report.results) == 12
     assert report.summary[CheckStatus.PASSED] == 10
+    assert report.summary[CheckStatus.SKIPPED] == 2  # адрес API не указан
 
 
 def test_one_failing_check_does_not_hide_the_others():
@@ -45,6 +51,7 @@ def test_network_failure_blocks_all_checks_but_site_is_requested_once():
     http = FakeHttp(error=NetworkError("нет ответа"))
     report = make_service(http).run(SITE)
     assert report.summary[CheckStatus.BLOCKED] == 10
+    assert report.summary[CheckStatus.SKIPPED] == 2
     assert len(http.calls) == 1
 
 

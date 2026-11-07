@@ -5,15 +5,23 @@ SITE = "https://example.com/"
 
 
 class FakeHttp:
-    """Заглушка клиента: отдаёт заранее заданный ответ или ошибку и считает вызовы."""
+    """Заглушка клиента: отдаёт заранее заданный ответ или ошибку и считает вызовы.
 
-    def __init__(self, response=None, error=None):
+    routes: ответы или ошибки по конкретным адресам (для проверок API с несколькими запросами)."""
+
+    def __init__(self, response=None, error=None, routes=None):
         self.response = response
         self.error = error
+        self.routes = routes or {}
         self.calls = []
 
     def get(self, url):
         self.calls.append(url)
+        if url in self.routes:
+            outcome = self.routes[url]
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
         if self.error:
             raise self.error
         return self.response

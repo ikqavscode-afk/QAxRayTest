@@ -1,7 +1,8 @@
 import pytest
 
-from app.core.checks.context import CheckContext
-from tests.unit.support import SITE, FakeHttp
+from app.core.checks.context import UNKNOWN_API_PATH, CheckContext
+from app.core.ports import NetworkError
+from tests.unit.support import SITE, FakeHttp, page
 
 
 def make(base=None):
@@ -31,3 +32,31 @@ def test_api_url_keeps_base_path_prefix():
 def test_api_url_without_base_is_an_error():
     with pytest.raises(ValueError, match="API"):
         make(None).api_url("/health")
+
+
+API = "https://api.example.com"
+
+
+def test_api_get_requests_each_address_once():
+    http = FakeHttp(response=page())
+    context = CheckContext(http=http, site_url=SITE, api_base_url=API)
+    first = context.api_get(f"{API}/health")
+    assert context.api_get(f"{API}/health") is first
+    assert http.calls == [f"{API}/health"]
+
+
+def test_api_get_caches_errors_too():
+    http = FakeHttp(error=NetworkError("нет ответа"))
+    context = CheckContext(http=http, site_url=SITE, api_base_url=API)
+    for _ in range(2):
+        with pytest.raises(NetworkError):
+            context.api_get(f"{API}/health")
+    assert len(http.calls) == 1
+
+
+def test_api_root_and_unknown_path_use_the_base_address():
+    http = FakeHttp(response=page())
+    context = CheckContext(http=http, site_url=SITE, api_base_url=API + "/")
+    context.api_root()
+    context.api_unknown_path()
+    assert http.calls == [API + "/", API + UNKNOWN_API_PATH]
