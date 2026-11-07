@@ -93,3 +93,8 @@ def test_unresolvable_hostname_is_rejected():
     policy = TargetPolicy(resolver=failing_resolver)
     with pytest.raises(TargetRejectedError):
         policy.validate("http://no-such-host.example.com")
+
+
+def test_rejection_error_names_the_field_and_defaults_to_site_url():
+    assert TargetRejectedError("x").field == "site_url"
+    assert TargetRejectedError("x", field="api_base_url").field == "api_base_url"

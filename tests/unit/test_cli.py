@@ -23,10 +23,10 @@ class StubService:
     def __init__(self, report=None, error=None):
         self.report = report
         self.error = error
-        self.urls = []
+        self.targets = []
 
-    def run(self, url):
-        self.urls.append(url)
+    def run(self, target):
+        self.targets.append(target)
         if self.error:
             raise self.error
         return self.report
@@ -65,7 +65,7 @@ def test_report_text_ends_with_summary_counts():
 def test_main_returns_zero_when_nothing_failed_or_blocked(capsys):
     service = StubService(report_of(result("QC-001", CheckStatus.PASSED)))
     assert main(["https://example.com"], service=service) == 0
-    assert service.urls == ["https://example.com"]
+    assert [t.site_url for t in service.targets] == ["https://example.com"]
     assert "QC-001" in capsys.readouterr().out
 
 
@@ -88,3 +88,38 @@ def test_main_returns_two_and_explains_when_address_is_rejected(capsys):
 def test_bootstrap_builds_real_service_with_group_a_checks():
     service = build_run_service()
     assert isinstance(service, RunService)
+
+
+def test_main_passes_api_options_to_service():
+    service = StubService(report_of(result("QC-001", CheckStatus.PASSED)))
+    argv = [
+        "https://example.com",
+        "--api-docs",
+        "https://api.example.com/openapi.json",
+        "--api-base",
+        "https://api.example.com",
+        "--api-path",
+        "/health",
+        "--api-path",
+        "/items",
+    ]
+    assert main(argv, service=service) == 0
+    target = service.targets[0]
+    assert target.api_docs_url == "https://api.example.com/openapi.json"
+    assert target.api_base_url == "https://api.example.com"
+    assert target.api_paths == ("/health", "/items")
+
+
+def test_main_without_api_options_leaves_them_empty():
+    service = StubService(report_of(result("QC-001", CheckStatus.PASSED)))
+    main(["https://example.com"], service=service)
+    target = service.targets[0]
+    assert target.api_docs_url is None and target.api_base_url is None
+    assert target.api_paths == ()
+
+
+def test_main_returns_two_for_invalid_api_path_and_runs_nothing(capsys):
+    service = StubService(report_of())
+    assert main(["https://example.com", "--api-path", "health"], service=service) == 2
+    assert service.targets == []
+    assert "--api-path" in capsys.readouterr().out

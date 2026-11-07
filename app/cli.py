@@ -2,14 +2,24 @@ import argparse
 from collections.abc import Sequence
 from typing import Protocol
 
+from pydantic import ValidationError
+
 from app.bootstrap import build_run_service
 from app.core.security.policy import TargetRejectedError
 from app.schemas.report import RunReport
 from app.schemas.status import CheckStatus
+from app.schemas.target import RunTarget, describe_errors
+
+FIELD_LABELS = {
+    "site_url": "адрес сайта",
+    "api_docs_url": "--api-docs",
+    "api_base_url": "--api-base",
+    "api_paths": "--api-path",
+}
 
 
 class Service(Protocol):
-    def run(self, site_url: str) -> RunReport: ...
+    def run(self, target: RunTarget) -> RunReport: ...
 
 
 def format_report(report: RunReport) -> str:
@@ -29,10 +39,29 @@ def format_report(report: RunReport) -> str:
 def main(argv: Sequence[str] | None = None, service: Service | None = None) -> int:
     parser = argparse.ArgumentParser(prog="qaxraytest", description="Базовые проверки сайта")
     parser.add_argument("url", help="адрес сайта, например https://example.com")
+    parser.add_argument("--api-docs", help="адрес документации API (необязательно)")
+    parser.add_argument("--api-base", help="базовый адрес API (необязательно)")
+    parser.add_argument(
+        "--api-path",
+        action="append",
+        default=[],
+        help="безопасный GET-путь API, например /health; можно указать несколько раз",
+    )
     args = parser.parse_args(argv)
+    try:
+        target = RunTarget(
+            site_url=args.url,
+            api_docs_url=args.api_docs,
+            api_base_url=args.api_base,
+            api_paths=tuple(args.api_path),
+        )
+    except ValidationError as error:
+        for field, message in describe_errors(error).items():
+            print(f"Параметры отклонены ({FIELD_LABELS[field]}): {message}")
+        return 2
     runner = service or build_run_service()
     try:
-        report = runner.run(args.url)
+        report = runner.run(target)
     except TargetRejectedError as error:
         print(f"Адрес отклонён: {error}")
         return 2

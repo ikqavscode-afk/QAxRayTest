@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.target import MAX_API_PATHS, RunTarget
+from app.schemas.target import MAX_API_PATHS, RunTarget, describe_errors
 
 SITE = "https://example.com/"
 
@@ -72,3 +72,18 @@ def test_target_is_immutable():
     target = RunTarget(site_url=SITE)
     with pytest.raises(ValidationError):
         target.site_url = "https://other.example.com/"  # type: ignore[misc]
+
+
+def test_describe_errors_maps_fields_to_readable_messages():
+    with pytest.raises(ValidationError) as caught:
+        RunTarget(site_url=SITE, api_paths=["health"])
+    errors = describe_errors(caught.value)
+    assert list(errors) == ["api_paths"]
+    assert "«/»" in errors["api_paths"]
+    assert "Value error" not in errors["api_paths"]
+
+
+def test_describe_errors_reports_blank_site_url():
+    with pytest.raises(ValidationError) as caught:
+        RunTarget(site_url="  ")
+    assert list(describe_errors(caught.value)) == ["site_url"]

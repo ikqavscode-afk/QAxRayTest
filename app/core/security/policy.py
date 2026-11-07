@@ -9,7 +9,13 @@ Resolver = Callable[[str], list[str]]
 
 
 class TargetRejectedError(ValueError):
-    """Адрес не прошёл политику безопасности; в сообщении указана причина."""
+    """Адрес не прошёл политику безопасности; в сообщении указана причина.
+
+    field: какое поле ввода отклонено (форма показывает ошибку рядом с ним)."""
+
+    def __init__(self, message: str, field: str = "site_url") -> None:
+        super().__init__(message)
+        self.field = field
 
 
 def system_resolver(host: str) -> list[str]:

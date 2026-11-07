@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 MAX_API_PATHS = 10
 MAX_PATH_LENGTH = 200
@@ -59,3 +59,18 @@ class RunTarget(BaseModel):
         if len(unique) > MAX_API_PATHS:
             raise ValueError(f"Пути API: не более {MAX_API_PATHS}")
         return unique
+
+
+_FIELDS = ("site_url", "api_docs_url", "api_base_url", "api_paths")
+
+
+def describe_errors(error: ValidationError) -> dict[str, str]:
+    """Ошибки ввода по полям: читаемый текст без технических префиксов pydantic."""
+    messages: dict[str, str] = {}
+    for item in error.errors():
+        field = str(item["loc"][0]) if item["loc"] else "site_url"
+        if field not in _FIELDS:
+            field = "site_url"
+        text = str(item["msg"]).removeprefix("Value error, ")
+        messages.setdefault(field, text)
+    return messages

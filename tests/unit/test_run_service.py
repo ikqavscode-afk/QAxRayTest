@@ -119,6 +119,7 @@ def test_internal_api_address_is_rejected_before_any_request(field):
     http = FakeHttp(response=page())
     service, _ = spy_service(http)
     target = RunTarget(site_url=SITE, **{field: "http://169.254.169.254/latest"})
-    with pytest.raises(TargetRejectedError):
+    with pytest.raises(TargetRejectedError) as caught:
         service.run(target)
+    assert caught.value.field == field  # форма покажет ошибку у нужного поля
     assert http.calls == []

@@ -55,10 +55,10 @@ class StubService:
     def __init__(self, report=None, error=None):
         self.report = report
         self.error = error
-        self.urls = []
+        self.targets = []
 
-    def run(self, url):
-        self.urls.append(url)
+    def run(self, target):
+        self.targets.append(target)
         if self.error:
             raise self.error
         return self.report
