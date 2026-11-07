@@ -53,6 +53,8 @@ class FakeDriver:
         self.images_result = None
         self.images_args = None
         self.images_error = None
+        self.overflow_result = None
+        self.overflow_error = None
 
     def get(self, url):
         self.get_calls.append(url)
@@ -66,6 +68,10 @@ class FakeDriver:
         self.page_load_timeout = seconds
 
     def execute_script(self, script, *args):
+        if "scrollWidth" in script:
+            if self.overflow_error:
+                raise self.overflow_error
+            return self.overflow_result
         if "document.images" in script:
             if self.images_error:
                 raise self.images_error
@@ -344,3 +350,53 @@ def test_images_probe_after_close_is_refused():
     browser.close()
     with pytest.raises(BrowserUnavailableError):
         browser.images(30)
+
+
+# Проба overflow: ширина окна, ширина содержимого и «виновники» без текста страницы
+
+
+def test_overflow_probe_returns_typed_facts():
+    browser, _, drivers = make()
+    drivers[0].overflow_result = {
+        "viewportWidth": 375,
+        "scrollWidth": 595,
+        "offenders": ["div#hero", "table.data"],
+    }
+    info = browser.overflow()
+    assert (info.viewport_width, info.scroll_width) == (375, 595)
+    assert info.offenders == ("div#hero", "table.data")
+
+
+def test_overflow_offenders_are_cleaned_and_limited():
+    browser, _, drivers = make()
+    drivers[0].overflow_result = {
+        "viewportWidth": 375,
+        "scrollWidth": 600,
+        "offenders": ["div#a b<script>", "x" * 200, 5, None] + [f"p.c{n}" for n in range(20)],
+    }
+    offenders = browser.overflow().offenders
+    assert len(offenders) <= 5
+    assert all(len(name) <= 40 for name in offenders)
+    assert all("<" not in name and " " not in name for name in offenders)
+
+
+@pytest.mark.parametrize("bad", [None, "text", {"viewportWidth": "x"}, {"scrollWidth": 5}, []])
+def test_overflow_probe_rejects_unusable_results(bad):
+    browser, _, drivers = make()
+    drivers[0].overflow_result = bad
+    with pytest.raises(BrowserError, match="проба"):
+        browser.overflow()
+
+
+def test_overflow_probe_failure_is_a_browser_error():
+    browser, _, drivers = make()
+    drivers[0].overflow_error = WebDriverException("Message: javascript error")
+    with pytest.raises(BrowserError):
+        browser.overflow()
+
+
+def test_overflow_probe_after_close_is_refused():
+    browser, _, _ = make()
+    browser.close()
+    with pytest.raises(BrowserUnavailableError):
+        browser.overflow()

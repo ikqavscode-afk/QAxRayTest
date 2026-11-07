@@ -6,6 +6,7 @@
 
 import logging
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -30,6 +31,7 @@ from app.core.browser import (
     BrowserUnavailableError,
     ImageInfo,
     ImagesSnapshot,
+    OverflowInfo,
     PageInfo,
     Viewport,
 )
@@ -80,6 +82,40 @@ return {
   })),
 };
 """
+# Ширина окна и содержимого; если страница шире окна, ищем самые внешние элементы за правым краем
+# (кроме лежащих внутри прокручиваемых или обрезающих предков). Текст страницы не собирается.
+OVERFLOW_SCRIPT = """
+const viewportWidth = window.innerWidth;
+const scrollWidth = document.documentElement.scrollWidth;
+const offenders = [];
+if (scrollWidth > viewportWidth + 1 && document.body) {
+  const seen = new Set();
+  const nodes = Array.from(document.body.querySelectorAll('*')).slice(0, 3000);
+  for (const el of nodes) {
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.right <= viewportWidth + 1) continue;
+    const style = getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.position === 'fixed') continue;
+    let clipped = false;
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      if (getComputedStyle(p).overflowX !== 'visible'
+          && p.getBoundingClientRect().right <= viewportWidth + 1) { clipped = true; break; }
+    }
+    if (clipped) continue;
+    const nested = seen.has(el.parentElement);
+    seen.add(el);
+    if (nested) continue;
+    const name = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '')
+      + (el.classList.length ? '.' + el.classList[0] : '');
+    offenders.push({name, right: rect.right});
+  }
+  offenders.sort((a, b) => b.right - a.right);
+}
+return {viewportWidth, scrollWidth, offenders: offenders.slice(0, 5).map((o) => o.name)};
+"""
+MAX_OFFENDERS = 5
+MAX_NAME_LENGTH = 40
+UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_\-:.#]")
 MAX_SRC_LENGTH = 300
 MAX_PROBE_LIMIT = 100
 
@@ -117,6 +153,28 @@ def _snapshot(raw: Any) -> ImagesSnapshot:
     total = raw.get("total") if isinstance(raw, dict) else None
     count = total if isinstance(total, int) and not isinstance(total, bool) else len(items)
     return ImagesSnapshot(total=max(count, len(items)), items=tuple(items))
+
+
+def _overflow_info(raw: Any) -> OverflowInfo:
+    if not isinstance(raw, dict):
+        raise BrowserError("Сбой браузера: проба переполнения вернула неожиданный результат")
+    widths = []
+    for key in ("viewportWidth", "scrollWidth"):
+        value = raw.get(key)
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise BrowserError("Сбой браузера: проба переполнения вернула неожиданный результат")
+        widths.append(int(value))
+    names = raw.get("offenders")
+    offenders = [
+        UNSAFE_NAME_CHARS.sub("", name)[:MAX_NAME_LENGTH]
+        for name in (names if isinstance(names, list) else [])
+        if isinstance(name, str)
+    ]
+    return OverflowInfo(
+        viewport_width=widths[0],
+        scroll_width=widths[1],
+        offenders=tuple(name for name in offenders if name)[:MAX_OFFENDERS],
+    )
 
 
 def _chrome_driver(options: ChromeOptions) -> Any:
@@ -220,6 +278,16 @@ class SeleniumBrowser:
         except WebDriverException as error:
             raise BrowserError(f"Сбой браузера: {_short(error)}") from error
         return _snapshot(raw)
+
+    def overflow(self) -> OverflowInfo:
+        """Ширина окна и содержимого текущей страницы (и что выходит за правый край)."""
+        if self._closed:
+            raise BrowserUnavailableError("Браузер закрыт")
+        try:
+            raw = self._driver.execute_script(OVERFLOW_SCRIPT)
+        except WebDriverException as error:
+            raise BrowserError(f"Сбой браузера: {_short(error)}") from error
+        return _overflow_info(raw)
 
     def _raise_for_error_page(self) -> None:
         """Chrome показывает ошибки как обычную страницу, поэтому распознаём их по разметке."""

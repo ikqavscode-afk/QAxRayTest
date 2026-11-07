@@ -1,4 +1,4 @@
-from app.core.browser import ImagesSnapshot, PageInfo
+from app.core.browser import ImagesSnapshot, OverflowInfo, PageInfo
 from app.core.checks.context import CheckContext
 from app.core.ports import HttpResponse
 
@@ -78,15 +78,22 @@ class FakeBrowser:
         self.closed = 0
         self.images_snapshot = ImagesSnapshot(total=0, items=())
         self.images_limits = []
+        self.current = None
+        self.overflow_results = {}  # окно -> OverflowInfo; по умолчанию переполнения нет
 
     def open(self, url, viewport):
         self.opens.append((url, viewport))
+        self.current = viewport
         if self.outcomes:
             outcome = self.outcomes.pop(0)
             if isinstance(outcome, Exception):
                 raise outcome
             return outcome
         return PageInfo(url=url, title="Тест", load_ms=10)
+
+    def overflow(self):
+        default = OverflowInfo(self.current.width, self.current.width, ())
+        return self.overflow_results.get(self.current, default)
 
     def images(self, limit):
         self.images_limits.append(limit)

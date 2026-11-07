@@ -119,3 +119,26 @@ def test_images_probe_tells_loaded_broken_lazy_and_ignores_hidden_and_tiny(brows
     assert broken.complete and broken.natural_width == 0
     assert "SECRET" not in broken.src  # параметры запроса в отчёт не попадают
     assert by_name["qaxray-lazy-missing.png"].lazy
+
+
+def test_overflow_probe_reports_wide_content_and_ignores_scrollable_containers(browser):
+    browser.open("https://example.com/", MOBILE)
+    assert browser.overflow().scroll_width <= browser.overflow().viewport_width + 1
+
+    driver = browser._driver
+    driver.execute_script(
+        "document.body.insertAdjacentHTML('beforeend', "
+        '\'<div id="qax-scroll" style="width:300px;overflow-x:auto">'
+        '<div style="width:2000px;height:10px"></div></div>\');'
+    )
+    contained = browser.overflow()  # широкое содержимое внутри прокручиваемого блока не в счёт
+    assert contained.scroll_width <= contained.viewport_width + 1 and contained.offenders == ()
+
+    driver.execute_script(
+        "document.body.insertAdjacentHTML('beforeend', "
+        '\'<div id="qax-wide" class="banner x" style="width:1200px;height:10px"></div>\');'
+    )
+    wide = browser.overflow()
+    assert wide.viewport_width == MOBILE.width
+    assert wide.scroll_width >= 1200
+    assert "div#qax-wide.banner" in wide.offenders

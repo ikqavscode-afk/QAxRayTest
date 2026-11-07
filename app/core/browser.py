@@ -82,6 +82,15 @@ class ImagesSnapshot:
     items: tuple[ImageInfo, ...]
 
 
+@dataclass(frozen=True)
+class OverflowInfo:
+    """Ширина окна и ширина содержимого; offenders: что выходит за правый край (теги, id, класс)."""
+
+    viewport_width: int
+    scroll_width: int
+    offenders: tuple[str, ...]
+
+
 class BrowserPort(Protocol):
     """Один браузер, одна страница. Методы-пробы для проверок добавляются по мере появления проверок.
 
@@ -91,6 +100,8 @@ class BrowserPort(Protocol):
     def open(self, url: str, viewport: Viewport) -> PageInfo: ...
 
     def images(self, limit: int) -> ImagesSnapshot: ...
+
+    def overflow(self) -> OverflowInfo: ...
 
     def close(self) -> None: ...
 

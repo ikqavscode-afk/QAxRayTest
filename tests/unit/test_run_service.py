@@ -22,7 +22,7 @@ def make_service(http):
 
 def test_default_profile_contains_profile_in_order():
     ids = [check.check_id for check in default_checks()]
-    assert ids == [f"QC-00{number}" for number in range(1, 10)] + [
+    assert ids == [f"QC-{number:03d}" for number in range(1, 11)] + [
         "QC-011",
         "QC-012",
         "QC-013",
@@ -42,8 +42,8 @@ def test_check_ids_are_unique():
 
 def test_healthy_site_passes_all_checks():
     report = make_service(FakeHttp(response=page())).run(SITE)
-    assert len(report.results) == 18
-    assert report.summary[CheckStatus.PASSED] == 11
+    assert len(report.results) == 19
+    assert report.summary[CheckStatus.PASSED] == 12
     assert report.summary[CheckStatus.SKIPPED] == 7  # адрес API не указан и нет изображений
 
 
