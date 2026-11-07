@@ -17,7 +17,11 @@ _RULES = (
     ("retry_delay", "QAXRAY_RETRY_DELAY", 0.0, 5.0, False),
     ("browser_page_timeout", "QAXRAY_BROWSER_PAGE_TIMEOUT", 5.0, 60.0, False),
 )
-HEADLESS_VARIABLE = "QAXRAY_BROWSER_HEADLESS"  # 0 или 1
+# Переключатели «0 или 1»: (поле, переменная окружения)
+_SWITCHES = (
+    ("browser_headless", "QAXRAY_BROWSER_HEADLESS"),
+    ("browser_no_sandbox", "QAXRAY_BROWSER_NO_SANDBOX"),
+)
 
 
 class SettingsError(ValueError):
@@ -36,6 +40,7 @@ class Settings(BaseModel):
     retry_delay: float = Field(0.5, ge=0.0, le=5.0, allow_inf_nan=False)
     browser_page_timeout: float = Field(20.0, ge=5.0, le=60.0, allow_inf_nan=False)
     browser_headless: bool = True
+    browser_no_sandbox: bool = False  # только для одноразовых машин CI
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> "Settings":
@@ -47,11 +52,12 @@ class Settings(BaseModel):
             raw = environ.get(variable, "").strip()
             if raw:
                 values[field] = raw
-        headless = environ.get(HEADLESS_VARIABLE, "").strip()
-        if headless in ("0", "1"):
-            values["browser_headless"] = headless == "1"
-        elif headless:
-            errors.append(f"{HEADLESS_VARIABLE}: нужно 0 или 1")
+        for field, variable in _SWITCHES:
+            switch = environ.get(variable, "").strip()
+            if switch in ("0", "1"):
+                values[field] = switch == "1"
+            elif switch:
+                errors.append(f"{variable}: нужно 0 или 1")
         try:
             settings = cls(**values)
         except ValidationError as error:

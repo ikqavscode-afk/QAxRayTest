@@ -32,7 +32,10 @@ def build_run_service(settings: Settings | None = None) -> RunService:
     settings = settings or Settings.from_env(os.environ)
     policy = TargetPolicy()
     browser_factory = selenium_browser_factory(
-        policy, page_timeout=settings.browser_page_timeout, headless=settings.browser_headless
+        policy,
+        page_timeout=settings.browser_page_timeout,
+        headless=settings.browser_headless,
+        no_sandbox=settings.browser_no_sandbox,
     )  # браузер запускается лениво, только если нужна браузерная проверка
     return RunService(
         http=build_http_client(settings, policy),

@@ -215,3 +215,22 @@ def test_service_is_built_without_starting_a_browser(monkeypatch):
 
     monkeypatch.setattr("app.adapters.browser.selenium_browser._chrome_driver", forbidden)
     assert isinstance(build_run_service(Settings()), RunService)
+
+
+# Режим для одноразовых машин CI: Chrome без песочницы (по умолчанию выключен)
+
+
+def test_browser_sandbox_is_enabled_by_default():
+    assert Settings().browser_no_sandbox is False
+
+
+def test_no_sandbox_variable_is_read_as_zero_or_one():
+    assert Settings.from_env({"QAXRAY_BROWSER_NO_SANDBOX": "1"}).browser_no_sandbox is True
+    assert Settings.from_env({"QAXRAY_BROWSER_NO_SANDBOX": "0"}).browser_no_sandbox is False
+    assert Settings.from_env({"QAXRAY_BROWSER_NO_SANDBOX": " "}).browser_no_sandbox is False
+
+
+@pytest.mark.parametrize("value", ["yes", "true", "2"])
+def test_no_sandbox_accepts_only_zero_or_one(value):
+    with pytest.raises(SettingsError, match="QAXRAY_BROWSER_NO_SANDBOX.*0 или 1"):
+        Settings.from_env({"QAXRAY_BROWSER_NO_SANDBOX": value})

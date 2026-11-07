@@ -419,6 +419,7 @@ class SeleniumBrowser:
         *,
         page_timeout: float = 20.0,
         headless: bool = True,
+        no_sandbox: bool = False,
         driver_factory: DriverFactory | None = None,
         proxy_factory: ProxyFactory = GuardProxy,
     ) -> None:
@@ -429,12 +430,14 @@ class SeleniumBrowser:
         self._proxy = proxy_factory(policy)
         try:
             port = self._proxy.start()
-            self._driver = (driver_factory or _chrome_driver)(self._options(port, headless))
+            self._driver = (driver_factory or _chrome_driver)(
+                self._options(port, headless, no_sandbox)
+            )
         except (WebDriverException, OSError) as error:
             self._cleanup()
             raise BrowserUnavailableError(f"Браузер не запустился: {_short(error)}") from error
 
-    def _options(self, proxy_port: int, headless: bool) -> ChromeOptions:
+    def _options(self, proxy_port: int, headless: bool, no_sandbox: bool) -> ChromeOptions:
         options = ChromeOptions()
         if headless:
             options.add_argument("--headless=new")
@@ -442,6 +445,9 @@ class SeleniumBrowser:
         options.add_argument("--proxy-bypass-list=<-loopback>")  # даже петля идёт через сторож
         for argument in HARDENING_ARGUMENTS:
             options.add_argument(argument)
+        if no_sandbox:  # только для одноразовых машин CI, где песочница Chrome недоступна
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
         options.add_experimental_option(
             "prefs",
             {
@@ -600,11 +606,13 @@ class SeleniumBrowser:
 
 
 def selenium_browser_factory(
-    policy: TargetPolicy, *, page_timeout: float, headless: bool
+    policy: TargetPolicy, *, page_timeout: float, headless: bool, no_sandbox: bool = False
 ) -> BrowserFactory:
     """Фабрика для сессии запуска: браузер создаётся лениво, при первой браузерной проверке."""
 
     def create() -> SeleniumBrowser:
-        return SeleniumBrowser(policy, page_timeout=page_timeout, headless=headless)
+        return SeleniumBrowser(
+            policy, page_timeout=page_timeout, headless=headless, no_sandbox=no_sandbox
+        )
 
     return create

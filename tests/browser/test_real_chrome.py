@@ -4,6 +4,7 @@
 
 Обращаются только к нейтральным открытым адресам (example.com и сервис для проверки сертификатов)."""
 
+import os
 import socket
 import threading
 import time
@@ -12,6 +13,7 @@ import pytest
 from selenium.webdriver.support.ui import WebDriverWait
 
 from app.adapters.browser.selenium_browser import SeleniumBrowser
+from app.config import Settings
 from app.core.browser import (
     DESKTOP,
     MOBILE,
@@ -25,7 +27,10 @@ pytestmark = pytest.mark.browser
 
 @pytest.fixture(scope="module")
 def browser():
-    instance = SeleniumBrowser(TargetPolicy(), page_timeout=30, headless=True)
+    settings = Settings.from_env(os.environ)  # в CI включён режим без песочницы
+    instance = SeleniumBrowser(
+        TargetPolicy(), page_timeout=30, headless=True, no_sandbox=settings.browser_no_sandbox
+    )
     yield instance
     instance.close()
 

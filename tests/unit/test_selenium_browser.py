@@ -635,3 +635,18 @@ def test_tab_probe_after_close_is_refused():
     browser.close()
     with pytest.raises(BrowserUnavailableError):
         browser.tab_sequence(20)
+
+
+# Режим без песочницы: только по явной просьбе (одноразовые машины CI)
+
+
+def test_chrome_sandbox_stays_on_by_default():
+    _, _, drivers = make()
+    arguments = drivers[0].options.arguments
+    assert "--no-sandbox" not in arguments and "--disable-dev-shm-usage" not in arguments
+
+
+def test_no_sandbox_mode_adds_the_flags_needed_on_throwaway_ci_machines():
+    _, _, drivers = make(no_sandbox=True)
+    arguments = drivers[0].options.arguments
+    assert "--no-sandbox" in arguments and "--disable-dev-shm-usage" in arguments
