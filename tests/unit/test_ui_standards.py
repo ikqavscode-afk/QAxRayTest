@@ -156,7 +156,11 @@ def test_scrollable_results_table_is_reachable_and_named_for_keyboard_users():
     app = create_app(service=StubService(RunReport(results=[result])))
     html = (
         app.test_client()
-        .post("/check", data={"site_url": "https://example.com", "consent": "on"})
+        .post(
+            "/check",
+            data={"site_url": "https://example.com", "consent": "on"},
+            follow_redirects=True,
+        )
         .get_data(as_text=True)
     )
     wrapper = re.search(r'<div class="table-wrap"[^>]*>', html)

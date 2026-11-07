@@ -3,6 +3,11 @@
 {% block content %}
 <h1>Результаты проверки</h1>
 <p class="lead">Сайт: <strong>{{ site_url }}</strong></p>
+{% if record.report is none %}
+<p class="error" role="alert">Запуск завершился внутренней ошибкой приложения. Повторите проверку позже.</p>
+<p><a class="button" href="{{ url_for('main.index') }}">Новая проверка</a></p>
+{% else %}
+{% set report = record.report %}
 <ul class="summary" aria-label="Сводка по статусам">
   {% for status, count in report.summary.items() %}
   <li class="status status-{{ status.value|lower }}">{{ status.value }}: {{ count }}</li>
@@ -33,4 +38,5 @@
 </table>
 </div>
 <p><a class="button" href="{{ url_for('main.index') }}">Новая проверка</a></p>
+{% endif %}
 {% endblock %}

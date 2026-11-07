@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Запуск не найден — QAxRayTest{% endblock %}
+{% block content %}
+<h1>Запуск не найден</h1>
+<p class="lead">Такого запуска нет, либо срок хранения результата истёк. Результаты хранятся ограниченное время.</p>
+<p><a class="button" href="{{ url_for('main.index') }}">Новая проверка</a></p>
+{% endblock %}

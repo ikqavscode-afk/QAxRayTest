@@ -4,7 +4,10 @@ from app.config import SettingsError
 from app.core.security.policy import TargetRejectedError
 from app.schemas.report import RunReport
 from app.schemas.result import CheckResult, Severity
+from app.schemas.run import RunStatus
 from app.schemas.status import CheckStatus
+from app.schemas.target import RunTarget
+from app.services.run_store import InMemoryRunStore
 from app.web import create_app
 from tests.unit.support import StubService
 
@@ -23,19 +26,20 @@ def result(check_id, status, reason=None):
 
 @pytest.fixture
 def make_client():
-    def _make(service):
-        app = create_app(service=service)
+    def _make(service, store=None):
+        app = create_app(service=service, store=store)
         app.config.update(TESTING=True)
         return app.test_client()
 
     return _make
 
 
-def post(client, **overrides):
+def post(client, follow=True, **overrides):
+    """Отправка формы; по умолчанию с переходом по перенаправлению (POST/Redirect/GET)."""
     data = {"site_url": "https://example.com", "consent": "on"}
     data.update(overrides)
     data = {key: value for key, value in data.items() if value is not None}
-    return client.post("/check", data=data)
+    return client.post("/check", data=data, follow_redirects=follow)
 
 
 def test_home_page_has_form_with_labels_and_consent(make_client):
@@ -186,3 +190,85 @@ def test_app_refuses_to_start_with_bad_settings(monkeypatch):
     monkeypatch.setenv("QAXRAY_MAX_BYTES", "1")
     with pytest.raises(SettingsError, match="QAXRAY_MAX_BYTES"):
         create_app()
+
+
+# POST/Redirect/GET: результат живёт по своему адресу
+
+
+def test_successful_post_redirects_to_the_run_page_without_repeating_the_check(make_client):
+    service = StubService(RunReport(results=[result("QC-001", CheckStatus.PASSED)]))
+    client = make_client(service)
+    response = post(client, follow=False)
+    assert response.status_code == 303
+    location = response.headers["Location"]
+    assert location.startswith("/runs/")
+    for _ in range(3):  # обновление страницы не запускает проверки заново
+        page = client.get(location)
+        assert page.status_code == 200 and "QC-001" in page.get_data(as_text=True)
+    assert len(service.targets) == 1
+
+
+def test_run_page_shows_the_address_and_summary_of_the_stored_run(make_client):
+    report = RunReport(results=[result("QC-001", CheckStatus.PASSED)])
+    client = make_client(StubService(report))
+    html = post(client).get_data(as_text=True)
+    assert "https://example.com" in html and "PASSED" in html
+
+
+def test_run_is_stored_with_status_completed(make_client):
+    store = InMemoryRunStore()
+    client = make_client(StubService(RunReport(results=[])), store=store)
+    location = post(client, follow=False).headers["Location"]
+    record = store.get(location.rsplit("/", 1)[-1])
+    assert record.status is RunStatus.COMPLETED and record.target.site_url == "https://example.com"
+
+
+@pytest.mark.parametrize("run_id", ["x" * 24, "short", "a" * 100, "bad id!"])
+def test_unknown_or_malformed_run_id_gives_404_page(make_client, run_id):
+    response = make_client(StubService()).get(f"/runs/{run_id}")
+    assert response.status_code == 404
+    html = response.get_data(as_text=True)
+    assert "не найден" in html and 'href="/"' in html
+
+
+def test_path_traversal_in_run_id_is_not_found(make_client):
+    assert make_client(StubService()).get("/runs/../../etc/passwd").status_code == 404
+
+
+def test_expired_run_gives_404(make_client):
+    from tests.unit.support import FakeClock
+
+    clock = FakeClock()
+    store = InMemoryRunStore(ttl_seconds=60, clock=clock)
+    client = make_client(StubService(RunReport(results=[])), store=store)
+    location = post(client, follow=False).headers["Location"]
+    clock.now = 61
+    assert client.get(location).status_code == 404
+
+
+def test_rejected_address_does_not_leave_a_stored_run(make_client):
+    store = InMemoryRunStore()
+    service = StubService(error=TargetRejectedError("внутренний адрес"))
+    response = post(make_client(service, store=store), site_url="http://127.0.0.1")
+    assert response.status_code == 400
+    assert store._runs == {}  # запуск не начинался
+
+
+def test_internal_error_is_recorded_without_leaking_details(make_client):
+    store = InMemoryRunStore()
+    service = StubService(error=RuntimeError("секретная подробность"))
+    client = make_client(service, store=store)
+    response = post(client)
+    html = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "внутренней ошибкой" in html and "секретная подробность" not in html
+    only = next(iter(store._runs.values()))
+    assert only.status is RunStatus.FAILED
+
+
+def test_too_many_running_runs_are_refused_politely(make_client):
+    store = InMemoryRunStore(max_runs=1)
+    store.create(RunTarget(site_url="https://example.com/"))  # занимает единственное место
+    response = post(make_client(StubService(RunReport(results=[])), store=store))
+    assert response.status_code == 429
+    assert "Слишком много" in response.get_data(as_text=True)
