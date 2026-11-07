@@ -11,6 +11,7 @@ dev = ["pytest", "ruff", "mypy", "responses", "types-requests"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
+markers = ["live: проверки по настоящим адресам; выключены, включаются через QAXRAY_LIVE=1"]
 
 [tool.ruff]
 line-length = 100

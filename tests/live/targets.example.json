@@ -1,0 +1,12 @@
+[
+  {
+    "name": "neutral-site",
+    "site_url": "https://example.com/",
+    "expect": {"QC-001": "PASSED", "QC-002": "PASSED", "QC-003": "PASSED"}
+  },
+  {
+    "name": "plain-http-site",
+    "site_url": "http://example.org/",
+    "expect": {"QC-003": "WARNING"}
+  }
+]
