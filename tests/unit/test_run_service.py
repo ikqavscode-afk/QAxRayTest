@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.browser import DESKTOP, BrowserUnavailableError
+from app.core.browser import DESKTOP, BrowserNotInstalledError, BrowserUnavailableError
 from app.core.checks.catalog import default_checks
 from app.core.ports import NetworkError
 from app.core.security.policy import TargetPolicy, TargetRejectedError
@@ -257,3 +257,28 @@ def test_stop_request_closes_the_browser_immediately_and_skips_the_remaining_che
     assert later.context is None  # следующая проверка не выполнялась
     assert [r.check_id for r in report.results] == ["QC-998"]
     assert factory.browser.closed == 1  # и повторно не закрывался с ошибкой
+
+
+def test_without_chrome_browser_checks_are_skipped_and_the_run_has_no_blocked_results():
+    policy = TargetPolicy(resolver=lambda host: [PUBLIC_IP])
+    service = RunService(
+        http=FakeHttp(response=page()),
+        policy=policy,
+        checks=default_checks(),
+        browser_factory=FakeFactory(error=BrowserNotInstalledError("Chrome не найден")),
+    )
+    report = service.run(SITE)
+    statuses = {result.check_id: result.status for result in report.results}
+    for check_id in (
+        "QC-009",
+        "QC-010",
+        "QC-014",
+        "QC-015",
+        "QC-016",
+        "QC-017",
+        "QC-018",
+        "QC-019",
+    ):
+        assert statuses[check_id] is CheckStatus.SKIPPED
+    assert report.summary[CheckStatus.BLOCKED] == 0  # консоль вернёт код 0
+    assert report.summary[CheckStatus.PASSED] >= 8  # проверки по HTTP и HTML работают

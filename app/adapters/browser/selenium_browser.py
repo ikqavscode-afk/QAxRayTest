@@ -15,12 +15,17 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import (
+    NoSuchDriverException,
+    TimeoutException,
+    WebDriverException,
+)
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 
+from app.adapters.browser.chrome_locator import chrome_installed
 from app.adapters.browser.guard_proxy import GuardProxy
 from app.core.browser import (
     AuthForm,
@@ -30,6 +35,7 @@ from app.core.browser import (
     BrowserError,
     BrowserFactory,
     BrowserNetworkError,
+    BrowserNotInstalledError,
     BrowserTimeoutError,
     BrowserUnavailableError,
     ButtonsSnapshot,
@@ -612,6 +618,7 @@ class SeleniumBrowser:
         headless: bool = True,
         no_sandbox: bool = False,
         render_wait: float = 3.0,
+        chrome_check: Callable[[], bool] | None = None,
         driver_factory: DriverFactory | None = None,
         proxy_factory: ProxyFactory = GuardProxy,
     ) -> None:
@@ -628,6 +635,13 @@ class SeleniumBrowser:
             )
         except (WebDriverException, OSError) as error:
             self._cleanup()
+            # «Драйвер не получен» бывает и без Chrome, и без сети: Chrome не найден, только если
+            # его нет и в стандартных местах установки.
+            driver_missing = isinstance(error, NoSuchDriverException | FileNotFoundError)
+            if driver_missing and not (chrome_check or chrome_installed)():
+                raise BrowserNotInstalledError(
+                    "Chrome не найден: установите Google Chrome"
+                ) from error
             raise BrowserUnavailableError(f"Браузер не запустился: {_short(error)}") from error
 
     def _options(self, proxy_port: int, headless: bool, no_sandbox: bool) -> ChromeOptions:

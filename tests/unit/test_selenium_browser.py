@@ -14,6 +14,7 @@ from app.core.browser import (
     BrowserCertificateError,
     BrowserError,
     BrowserNetworkError,
+    BrowserNotInstalledError,
     BrowserTimeoutError,
     BrowserUnavailableError,
 )
@@ -813,3 +814,81 @@ def test_rendered_probe_after_close_is_refused():
     browser.close()
     with pytest.raises(BrowserUnavailableError):
         browser.rendered_page()
+
+
+# Chrome не установлен: отличается от «браузер не запустился»
+
+
+def failing_factory(error):
+    def factory(options):
+        raise error
+
+    return factory
+
+
+def no_driver():
+    from selenium.common.exceptions import NoSuchDriverException
+
+    return NoSuchDriverException("Message: Unable to obtain driver for chrome")
+
+
+def start(error, chrome_present):
+    proxy = FakeProxy()
+    return SeleniumBrowser(
+        POLICY,
+        driver_factory=failing_factory(error),
+        proxy_factory=lambda policy: proxy,
+        chrome_check=lambda: chrome_present,
+    ), proxy
+
+
+def test_missing_driver_and_no_chrome_installed_means_chrome_not_found():
+    proxy = FakeProxy()
+    with pytest.raises(BrowserNotInstalledError, match="Chrome не найден"):
+        SeleniumBrowser(
+            POLICY,
+            driver_factory=failing_factory(no_driver()),
+            proxy_factory=lambda policy: proxy,
+            chrome_check=lambda: False,
+        )
+    assert proxy.stopped == 1  # сторож остановлен и в этом случае
+
+
+def test_missing_driver_with_chrome_installed_is_a_plain_launch_failure_not_a_missing_browser():
+    proxy = FakeProxy()
+    with pytest.raises(BrowserUnavailableError) as caught:
+        SeleniumBrowser(
+            POLICY,
+            driver_factory=failing_factory(no_driver()),
+            proxy_factory=lambda policy: proxy,
+            chrome_check=lambda: True,
+        )
+    assert not isinstance(caught.value, BrowserNotInstalledError)  # например, нет сети для драйвера
+
+
+def test_other_launch_failures_are_never_reported_as_a_missing_browser():
+    proxy = FakeProxy()
+    error = WebDriverException("Message: session not created: version mismatch")
+    with pytest.raises(BrowserUnavailableError) as caught:
+        SeleniumBrowser(
+            POLICY,
+            driver_factory=failing_factory(error),
+            proxy_factory=lambda policy: proxy,
+            chrome_check=lambda: False,
+        )
+    assert not isinstance(caught.value, BrowserNotInstalledError)
+
+
+def test_missing_executable_without_chrome_installed_means_chrome_not_found():
+    proxy = FakeProxy()
+    with pytest.raises(BrowserNotInstalledError):
+        SeleniumBrowser(
+            POLICY,
+            driver_factory=failing_factory(FileNotFoundError("chromedriver")),
+            proxy_factory=lambda policy: proxy,
+            chrome_check=lambda: False,
+        )
+
+
+def test_not_installed_is_a_kind_of_unavailable_browser():
+    assert issubclass(BrowserNotInstalledError, BrowserUnavailableError)

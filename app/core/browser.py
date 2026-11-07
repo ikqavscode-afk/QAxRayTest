@@ -28,6 +28,10 @@ class BrowserUnavailableError(BrowserError):
     """Браузер или драйвер не запустился, не подключён к запуску либо сессия закрыта."""
 
 
+class BrowserNotInstalledError(BrowserUnavailableError):
+    """Chrome не установлен: это не сбой запуска, браузерные проверки пропускаются (SKIPPED)."""
+
+
 class BrowserBlockedError(BrowserError):
     """Навигация или запрос страницы запрещены политикой безопасности. Не повторяется."""
 

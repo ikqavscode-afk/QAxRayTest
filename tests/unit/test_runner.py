@@ -1,6 +1,11 @@
 import pytest
 
-from app.core.browser import BrowserBudgetError, BrowserNetworkError, BrowserUnavailableError
+from app.core.browser import (
+    BrowserBudgetError,
+    BrowserNetworkError,
+    BrowserNotInstalledError,
+    BrowserUnavailableError,
+)
 from app.core.checks.context import CheckContext
 from app.core.execution.runner import Runner
 from app.core.ports import NetworkError, TooManyRedirectsError
@@ -158,3 +163,16 @@ def test_a_stop_before_the_first_check_gives_an_empty_report():
 
 def test_runner_without_callbacks_behaves_as_before():
     assert len(run(StubCheck("QC-001"), StubCheck("QC-002")).results) == 2
+
+
+def test_missing_chrome_is_skipped_not_blocked_and_says_how_to_fix_it():
+    result = run(StubCheck("QC-009", error=BrowserNotInstalledError("Chrome не найден"))).results[0]
+    assert result.status is CheckStatus.SKIPPED
+    assert "Chrome не найден" in result.reason and "установите" in result.reason
+
+
+def test_other_unavailable_browser_errors_stay_blocked():
+    result = run(
+        StubCheck("QC-009", error=BrowserUnavailableError("драйвер не запустился"))
+    ).results[0]
+    assert result.status is CheckStatus.BLOCKED
