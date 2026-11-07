@@ -2,6 +2,7 @@ import json
 from urllib.parse import urlsplit
 
 from app.core.checks.context import CheckContext
+from app.core.openapi import check_required, load_spec, response_shape
 from app.core.ports import HttpResponse
 from app.schemas.result import CheckResult, Severity
 from app.schemas.status import CheckStatus
@@ -225,6 +226,69 @@ class ApiJsonParses(_UserPathsCheck):
         except ValueError:
             return False
         return True
+
+
+class ApiRequiredFields(_UserPathsCheck):
+    check_id = "QC-024"
+    title = "Обязательные поля присутствуют"
+    severity = Severity.MEDIUM
+    expected = "Обязательные поля из документации (OpenAPI/Swagger JSON) есть в ответе"
+
+    def run(self, context: CheckContext) -> CheckResult:
+        reason = self._skip_reason(context)
+        if reason:
+            return self._skipped(reason)
+        if context.api_docs_url is None:
+            return self._skipped("Адрес документации API не указан")
+        docs = context.api_docs()
+        if not _is_success(docs):
+            return self._skipped(f"Документация недоступна: код {docs.status_code}")
+        if docs.truncated:
+            return self._skipped("Документация больше лимита чтения")
+        spec = load_spec(docs.body)
+        if spec is None:
+            return self._skipped(
+                "Документация не распознана как OpenAPI 3.x или Swagger 2.0 в формате JSON "
+                "(YAML в MVP не читается)"
+            )
+        evaluated: list[str] = []
+        problems: list[str] = []
+        evidence: list[str] = []
+        for path, response in self._responses(context):
+            if not _is_success(response) or not _is_json(response) or response.truncated:
+                continue
+            shape = response_shape(spec, _display_path(path))
+            if shape is None:
+                continue
+            try:
+                data = json.loads(response.body.decode("utf-8", errors="replace"))
+            except ValueError:
+                continue  # неразбираемый JSON сообщает QC-023
+            missing = check_required(data, shape)
+            if missing is None:
+                continue
+            evaluated.append(path)
+            evidence.append(_request_line(response))
+            if missing:
+                problems.append(f"{_display_path(path)}: нет {', '.join(missing)}")
+        if not evaluated:
+            return self._skipped(
+                "Для указанных путей в документации нет схем ответа с обязательными полями"
+            )
+        if problems:
+            return _build(
+                self,
+                CheckStatus.WARNING,
+                "Расхождение с документацией: " + "; ".join(problems),
+                reason="Схема читается упрощённо; сверьте ответ с документацией вручную",
+                evidence=evidence,
+            )
+        return _build(
+            self,
+            CheckStatus.PASSED,
+            f"Проверено путей: {len(evaluated)}, обязательные поля на месте",
+            evidence=evidence,
+        )
 
 
 class UnknownPathIsHandled(_ApiCheck):

@@ -2,6 +2,7 @@ from app.core.checks.api import (
     ApiBaseResponds,
     ApiContentTypeMatches,
     ApiJsonParses,
+    ApiRequiredFields,
     ApiStatusIsExpected,
     UnknownPathIsHandled,
 )
@@ -34,5 +35,6 @@ def default_checks() -> list[Check]:
         ApiStatusIsExpected(),
         ApiContentTypeMatches(),
         ApiJsonParses(),
+        ApiRequiredFields(),
         UnknownPathIsHandled(),
     ]

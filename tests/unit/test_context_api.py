@@ -60,3 +60,14 @@ def test_api_root_and_unknown_path_use_the_base_address():
     context.api_root()
     context.api_unknown_path()
     assert http.calls == [API + "/", API + UNKNOWN_API_PATH]
+
+
+def test_api_docs_requests_documentation_url_and_requires_it():
+    http = FakeHttp(response=page())
+    context = CheckContext(
+        http=http, site_url=SITE, api_docs_url=API + "/openapi.json", api_base_url=API
+    )
+    context.api_docs()
+    assert http.calls == [API + "/openapi.json"]
+    with pytest.raises(ValueError, match="документации"):
+        make(API).api_docs()

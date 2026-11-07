@@ -26,6 +26,7 @@ def test_default_profile_contains_profile_in_order():
         "QC-021",
         "QC-022",
         "QC-023",
+        "QC-024",
         "QC-025",
     ]
 
@@ -37,9 +38,9 @@ def test_check_ids_are_unique():
 
 def test_healthy_site_passes_all_checks():
     report = make_service(FakeHttp(response=page())).run(SITE)
-    assert len(report.results) == 15
+    assert len(report.results) == 16
     assert report.summary[CheckStatus.PASSED] == 10
-    assert report.summary[CheckStatus.SKIPPED] == 5  # адрес API не указан
+    assert report.summary[CheckStatus.SKIPPED] == 6  # адрес API не указан
 
 
 def test_one_failing_check_does_not_hide_the_others():
@@ -54,7 +55,7 @@ def test_network_failure_blocks_all_checks_but_site_is_requested_once():
     http = FakeHttp(error=NetworkError("нет ответа"))
     report = make_service(http).run(SITE)
     assert report.summary[CheckStatus.BLOCKED] == 10
-    assert report.summary[CheckStatus.SKIPPED] == 5
+    assert report.summary[CheckStatus.SKIPPED] == 6
     assert len(http.calls) == 1
 
 

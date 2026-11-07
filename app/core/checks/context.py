@@ -71,3 +71,9 @@ class CheckContext:
     def api_unknown_path(self) -> HttpResponse:
         """Ответ API на несуществующий путь."""
         return self.api_get(self.api_url(UNKNOWN_API_PATH))
+
+    def api_docs(self) -> HttpResponse:
+        """Ответ на запрос документации API."""
+        if self.api_docs_url is None:
+            raise ValueError("Адрес документации API не указан")
+        return self.api_get(self.api_docs_url)
