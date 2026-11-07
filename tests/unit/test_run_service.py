@@ -3,7 +3,9 @@ import pytest
 from app.core.checks.catalog import default_checks
 from app.core.ports import NetworkError
 from app.core.security.policy import TargetPolicy, TargetRejectedError
+from app.schemas.result import CheckResult, Severity
 from app.schemas.status import CheckStatus
+from app.schemas.target import RunTarget
 from app.services.run_service import RunService
 from tests.unit.support import SITE, FakeHttp, page
 
@@ -50,4 +52,63 @@ def test_internal_address_is_rejected_before_any_request():
     http = FakeHttp(response=page())
     with pytest.raises(TargetRejectedError):
         make_service(http).run("http://127.0.0.1/admin")
+    assert http.calls == []
+
+
+class SpyCheck:
+    """Проверка-наблюдатель: запоминает контекст, который получил от сервиса."""
+
+    check_id = "QC-999"
+    title = "Наблюдатель"
+    severity = Severity.LOW
+
+    def __init__(self):
+        self.context = None
+
+    def run(self, context):
+        self.context = context
+        return CheckResult(
+            check_id=self.check_id,
+            title=self.title,
+            status=CheckStatus.PASSED,
+            severity=self.severity,
+            expected="-",
+            actual="-",
+        )
+
+
+def spy_service(http):
+    spy = SpyCheck()
+    policy = TargetPolicy(resolver=lambda host: [PUBLIC_IP])
+    return RunService(http=http, policy=policy, checks=[spy]), spy
+
+
+def test_service_accepts_plain_string_for_backward_compatibility():
+    service, spy = spy_service(FakeHttp(response=page()))
+    service.run(SITE)
+    assert spy.context.site_url == SITE
+    assert spy.context.api_base_url is None
+
+
+def test_service_passes_api_data_from_target_to_context():
+    service, spy = spy_service(FakeHttp(response=page()))
+    target = RunTarget(
+        site_url=SITE,
+        api_docs_url="https://api.example.com/openapi.json",
+        api_base_url="https://api.example.com",
+        api_paths=["/health"],
+    )
+    service.run(target)
+    assert spy.context.api_docs_url == "https://api.example.com/openapi.json"
+    assert spy.context.api_base_url == "https://api.example.com"
+    assert spy.context.api_paths == ("/health",)
+
+
+@pytest.mark.parametrize("field", ["api_base_url", "api_docs_url"])
+def test_internal_api_address_is_rejected_before_any_request(field):
+    http = FakeHttp(response=page())
+    service, _ = spy_service(http)
+    target = RunTarget(site_url=SITE, **{field: "http://169.254.169.254/latest"})
+    with pytest.raises(TargetRejectedError):
+        service.run(target)
     assert http.calls == []
