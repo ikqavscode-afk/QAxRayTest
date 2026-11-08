@@ -11,6 +11,9 @@ from app.services.run_manager import RunManager, Service
 from app.services.run_store import InMemoryRunStore, RunStore
 from app.web.csrf import init_csrf
 from app.web.routes import Manager, bp
+from app.web.security import init_security
+
+GLOBAL_FACTOR = 3  # общий предел запусков = предел одного клиента × 3
 
 
 def create_app(
@@ -18,6 +21,7 @@ def create_app(
     store: RunStore | None = None,
     manager: Manager | None = None,
     limiter: RateLimiter | None = None,
+    global_limiter: RateLimiter | None = None,
     settings: Settings | None = None,
 ) -> Flask:
     """Фабрика приложения. Службу, хранилище и менеджер запусков можно подставить (в тестах)."""
@@ -26,12 +30,19 @@ def create_app(
     app.jinja_env.filters["redact"] = Redactor().redact_text  # адрес сайта на странице
     settings = settings or Settings.from_env(os.environ)
     store = store or InMemoryRunStore(max_running=settings.max_parallel_runs)
-    manager = manager or RunManager(service or build_run_service(), store)
+    manager = manager or RunManager(
+        service or build_run_service(), store, max_run_seconds=settings.max_run_seconds
+    )
     app.extensions["run_store"] = store
     app.extensions["run_manager"] = manager
     app.extensions["rate_limiter"] = limiter or RateLimiter(
         settings.rate_limit_runs, settings.rate_limit_window
     )
+    # общий предел на весь сервис: толпа разных клиентов не обходит ограничение по одному адресу
+    app.extensions["global_limiter"] = global_limiter or RateLimiter(
+        settings.rate_limit_runs * GLOBAL_FACTOR, settings.rate_limit_window
+    )
+    init_security(app, settings.allowed_hosts, settings.trusted_proxies)
     init_csrf(app)
     app.config.update(SESSION_COOKIE_SECURE=settings.cookie_secure)
     app.register_blueprint(bp)

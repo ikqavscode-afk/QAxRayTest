@@ -42,11 +42,13 @@ class RunManager:
         *,
         starter: Starter | None = None,
         redactor: Redactor | None = None,
+        max_run_seconds: float | None = None,
     ) -> None:
         self._service = service
         self._redactor = redactor or Redactor()  # секреты маскируются до сохранения
         self._store = store
         self._starter = starter  # подмена способа запуска (в тестах: синхронно)
+        self._max_run_seconds = max_run_seconds  # предел времени запуска; None: без предела
         self._lock = threading.Lock()
         self._controls: dict[str, RunControl] = {}
         self._threads: dict[str, threading.Thread] = {}
@@ -57,7 +59,7 @@ class RunManager:
         control = RunControl()
         with self._lock:
             self._controls[record.run_id] = control
-        job = lambda: self._execute(record.run_id, target, control)
+        job = lambda: self._execute_with_deadline(record.run_id, target, control)
         if self._starter is not None:
             self._starter(job)
         else:
@@ -85,6 +87,25 @@ class RunManager:
             return True
         thread.join(timeout)
         return not thread.is_alive()
+
+    def _execute_with_deadline(self, run_id: str, target: RunTarget, control: RunControl) -> None:
+        """Запуск с пределом времени: по истечении срока запрашивается остановка (браузер закрывается)."""
+        timer: threading.Timer | None = None
+        if self._max_run_seconds is not None:
+            timer = threading.Timer(self._max_run_seconds, self._on_timeout, (run_id, control))
+            timer.name = f"run-timeout-{run_id[:8]}"
+            timer.daemon = True
+            timer.start()
+        try:
+            self._execute(run_id, target, control)
+        finally:
+            if timer is not None:
+                timer.cancel()
+
+    @staticmethod
+    def _on_timeout(run_id: str, control: RunControl) -> None:
+        logger.warning("Запуск %s остановлен по пределу времени", run_id[:8])
+        control.request_stop()
 
     def _execute(self, run_id: str, target: RunTarget, control: RunControl) -> None:
         def on_progress(partial: RunReport, total: int) -> None:

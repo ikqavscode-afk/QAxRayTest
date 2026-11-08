@@ -38,3 +38,11 @@ def test_browser_workflow_runs_on_changes_to_browser_code_only():
 def test_browser_workflow_uses_no_sandbox_only_in_the_throwaway_runner():
     assert 'QAXRAY_BROWSER_NO_SANDBOX: "1"' in text("browser.yml")
     assert "QAXRAY_BROWSER_NO_SANDBOX" not in text("ci.yml")
+
+
+def test_dependency_audit_is_separate_scheduled_and_never_blocks_the_fast_ci():
+    audit = text("audit.yml")
+    assert "pip-audit" in audit
+    assert "workflow_dispatch" in audit and "schedule:" in audit and "cron:" in audit
+    assert "timeout-minutes:" in audit
+    assert "pip-audit" not in text("ci.yml")

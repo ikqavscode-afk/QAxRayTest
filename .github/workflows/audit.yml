@@ -1,0 +1,22 @@
+name: Dependency audit
+
+# Отдельное задание: ищет известные уязвимости в зависимостях. Не входит в быстрый CI, чтобы новая
+# публикация об уязвимости не блокировала несвязанные изменения. Запуск: вручную и раз в неделю.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Установка
+        run: pip install -e . pip-audit
+      - name: Аудит зависимостей
+        run: pip-audit --skip-editable

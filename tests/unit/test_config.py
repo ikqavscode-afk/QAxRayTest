@@ -30,6 +30,9 @@ def test_defaults_match_the_values_used_before_configuration_existed():
     assert settings.rate_limit_runs == 10
     assert settings.rate_limit_window == 60.0
     assert settings.cookie_secure is False
+    assert settings.allowed_hosts == ("localhost", "127.0.0.1", "[::1]")
+    assert settings.trusted_proxies == 0
+    assert settings.max_run_seconds == 300.0
 
 
 def test_empty_environment_gives_defaults():
@@ -100,6 +103,10 @@ def test_boundary_values_are_accepted(environment):
         ("QAXRAY_RATE_LIMIT_RUNS", "31"),
         ("QAXRAY_RATE_LIMIT_WINDOW", "9"),
         ("QAXRAY_RATE_LIMIT_WINDOW", "601"),
+        ("QAXRAY_TRUSTED_PROXIES", "-1"),
+        ("QAXRAY_TRUSTED_PROXIES", "4"),
+        ("QAXRAY_MAX_RUN_SECONDS", "29"),
+        ("QAXRAY_MAX_RUN_SECONDS", "901"),
     ],
 )
 def test_out_of_range_values_are_rejected_and_name_the_variable(variable, value):
@@ -254,3 +261,28 @@ def test_no_sandbox_variable_is_read_as_zero_or_one():
 def test_no_sandbox_accepts_only_zero_or_one(value):
     with pytest.raises(SettingsError, match="QAXRAY_BROWSER_NO_SANDBOX.*0 или 1"):
         Settings.from_env({"QAXRAY_BROWSER_NO_SANDBOX": value})
+
+
+# Список разрешённых имён хоста
+
+
+def test_allowed_hosts_are_read_normalised_and_trimmed():
+    settings = Settings.from_env({"QAXRAY_ALLOWED_HOSTS": " Demo.Example.org , localhost "})
+    assert settings.allowed_hosts == ("demo.example.org", "localhost")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "*",
+        "*.example.org",
+        "evil.example/path",
+        "a b",
+        "http://x.example",
+        "x" * 300,
+        ",".join(f"h{n}.example" for n in range(11)),
+    ],
+)
+def test_bad_allowed_hosts_are_rejected_and_name_the_variable(value):
+    with pytest.raises(SettingsError, match="QAXRAY_ALLOWED_HOSTS"):
+        Settings.from_env({"QAXRAY_ALLOWED_HOSTS": value})

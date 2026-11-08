@@ -89,6 +89,13 @@ def check() -> str | tuple[str, int] | RedirectResponse | Response:
         limited = make_response(render_template("index.html", values=values, errors=errors), 429)
         limited.headers["Retry-After"] = str(decision.retry_after)
         return limited
+    shared: RateLimiter = current_app.extensions["global_limiter"]
+    busy = shared.check("all")
+    if not busy.allowed:
+        errors["site_url"] = f"Сервис занят: повторите через {busy.retry_after} с"
+        limited = make_response(render_template("index.html", values=values, errors=errors), 429)
+        limited.headers["Retry-After"] = str(busy.retry_after)
+        return limited
     manager: Manager = current_app.extensions["run_manager"]
     try:
         record = manager.start(target)
