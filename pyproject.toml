@@ -1,6 +1,6 @@
 [project]
 name = "qaxraytest"
-version = "0.1.0"
+version = "0.1.1"
 description = "Безопасная платформа базовых проверок сайтов и API"
 requires-python = ">=3.12"
 dependencies = ["pydantic>=2.7", "requests>=2.32", "flask>=3.0", "selenium>=4.20"]

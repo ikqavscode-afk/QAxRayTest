@@ -31,7 +31,7 @@ def app_version() -> str:
     try:
         return metadata.version("qaxraytest")
     except metadata.PackageNotFoundError:
-        return "0.1.0"
+        return "0.1.1"
 
 
 def environment() -> Environment:
