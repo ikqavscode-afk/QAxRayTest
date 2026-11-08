@@ -46,6 +46,8 @@ progress::-webkit-progress-bar { background: var(--border-control); border-radiu
 progress::-webkit-progress-value { background: var(--accent); border-radius: .5rem; }
 progress::-moz-progress-bar { background: var(--accent); border-radius: .5rem; }
 #run section.card { margin-bottom: 1rem; }
+#results + section.card { margin-top: 1rem; }
+.downloads { display:flex; flex-wrap:wrap; gap:.5rem; list-style:none; padding:0; margin:.5rem 0 1rem; }
 td a { display:inline-flex; align-items:center; min-height:2.75rem; }
 dl.facts dt { font-weight:600; margin-top:1rem; }
 dl.facts dd { margin:.25rem 0 0; }

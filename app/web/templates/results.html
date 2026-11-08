@@ -51,6 +51,20 @@
     </div>
   </div>
   {% endif %}
+  {% if can_download %}
+  <section class="card" aria-labelledby="downloads-title">
+    <h2 id="downloads-title">Отчёты</h2>
+    <p class="hint">Файлы собираются из сохранённых результатов; секреты в них замаскированы.</p>
+    <ul class="downloads">
+      {% if has_failed %}
+      <li><a class="button" href="{{ url_for('main.download', run_id=record.run_id, kind='bug-reports.md') }}" download>Черновики bug report (Markdown)</a></li>
+      <li><a class="button" href="{{ url_for('main.download', run_id=record.run_id, kind='bug-reports.json') }}" download>Черновики bug report (JSON)</a></li>
+      {% endif %}
+      <li><a class="button" href="{{ url_for('main.download', run_id=record.run_id, kind='allure-results.zip') }}" download>Результаты для Allure (ZIP)</a></li>
+    </ul>
+    {% if not has_failed %}<p class="hint">Черновиков bug report нет: проверок со статусом FAILED не было.</p>{% endif %}
+  </section>
+  {% endif %}
 </div>
 <p><a class="button" href="{{ url_for('main.index') }}">Новая проверка</a></p>
 {% endblock %}

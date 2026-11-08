@@ -15,8 +15,9 @@ from pydantic import ValidationError
 from werkzeug.wrappers import Response as RedirectResponse
 
 from app.core.security.policy import TargetRejectedError
-from app.schemas.run import RunRecord
+from app.schemas.run import RunRecord, RunStatus
 from app.schemas.target import RunTarget, describe_errors, parse_path_line
+from app.services.report_export import KINDS, build_export, has_failed, is_ready
 from app.services.run_store import RunLimitError, RunStore
 
 bp = Blueprint("main", __name__)
@@ -105,7 +106,28 @@ def run_page(run_id: str) -> str | tuple[str, int]:
         report=record.report,
         done=done,
         site_url=record.target.site_url,
+        can_download=is_ready(record),
+        has_failed=has_failed(record),
     )
+
+
+@bp.get("/runs/<run_id>/downloads/<kind>")
+def download(run_id: str, kind: str) -> Response | tuple[str, int]:
+    """Скачивание отчёта: только для завершённого или остановленного запуска."""
+    store: Store = current_app.extensions["run_store"]
+    record = store.get(run_id) if RUN_ID.fullmatch(run_id) else None
+    if record is None or kind not in KINDS:
+        return render_template("run_not_found.html"), 404
+    if record.status is RunStatus.RUNNING:
+        return "Запуск ещё идёт: дождитесь завершения или остановки.", 409
+    export = build_export(record, kind)
+    if export is None:
+        return render_template("run_not_found.html"), 404
+    response = Response(export.content, mimetype=export.mimetype)
+    response.headers["Content-Disposition"] = f'attachment; filename="{export.filename}"'
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @bp.get("/runs/<run_id>/checks/<check_id>")

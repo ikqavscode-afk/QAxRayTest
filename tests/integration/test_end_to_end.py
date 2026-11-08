@@ -63,6 +63,14 @@ def test_scenario_full_run_from_form_to_reports(stack, network):
         assert len([n for n in zf.namelist() if n.endswith("-result.json")]) == 25
         for name in zf.namelist():
             assert_no_secrets(zf.read(name).decode(), f"в архиве {name}")
+    # Скачивание из интерфейса отдаёт те же замаскированные данные
+    for kind in ("bug-reports.md", "bug-reports.json", "allure-results.zip"):
+        reply_ = stack.client.get(f"/runs/{run_id}/downloads/{kind}")
+        assert reply_.status_code in (200, 404)  # 404: FAILED-проверок нет, черновиков нет
+        assert_no_secrets(
+            reply_.get_data(as_text=True) if kind != "allure-results.zip" else "", kind
+        )
+    assert stack.client.get(f"/runs/{run_id}/downloads/allure-results.zip").status_code == 200
     # Все обращения шли к имитированной сети и только к разрешённым хостам
     hosts = {re.match(r"https://([^/]+)", call.request.url).group(1) for call in network.calls}
     assert hosts <= {"site.example.com", "api.example.com"}

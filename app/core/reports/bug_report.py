@@ -166,3 +166,12 @@ def render_markdown(draft: BugReport) -> str:
 
 def render_json(draft: BugReport) -> str:
     return json.dumps(draft.model_dump(), ensure_ascii=False, indent=2)
+
+
+def render_markdown_bundle(drafts: list[BugReport]) -> str:
+    """Все черновики запуска в одном Markdown-файле, разделённые горизонтальной чертой."""
+    return "\n---\n\n".join(render_markdown(draft) for draft in drafts)
+
+
+def render_json_bundle(drafts: list[BugReport]) -> str:
+    return json.dumps([draft.model_dump() for draft in drafts], ensure_ascii=False, indent=2)
