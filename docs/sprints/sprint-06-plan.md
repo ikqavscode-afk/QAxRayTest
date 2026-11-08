@@ -1,6 +1,6 @@
 # Sprint 6. План: укрепление и релиз
 
-Статус: утверждён 2026-11-08, идёт. Скорость для планирования: около 28 SP (Sprint 1: 26, Sprint 2: 31, Sprint 3: 28,
+Статус: завершён. Итоги: [sprint-06-retrospective.md](sprint-06-retrospective.md). Скорость для планирования: около 28 SP (Sprint 1: 26, Sprint 2: 31, Sprint 3: 28,
 Sprint 4: 28, Sprint 5: 28).
 
 ## Цель спринта
