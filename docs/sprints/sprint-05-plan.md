@@ -1,6 +1,6 @@
 # Sprint 5. План: отчёты
 
-Статус: запланирован. Скорость для планирования: около 28 SP (Sprint 1: 26, Sprint 2: 31, Sprint 3: 28, Sprint 4: 28).
+Статус: завершён. Итоги: [sprint-05-retrospective.md](sprint-05-retrospective.md). Скорость для планирования: около 28 SP (Sprint 1: 26, Sprint 2: 31, Sprint 3: 28, Sprint 4: 28).
 
 ## Цель спринта
 
