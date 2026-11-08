@@ -4,6 +4,7 @@ from urllib.parse import urljoin
 
 import requests
 
+from app.adapters.http.pinned import pinned_session
 from app.core.ports import HttpResponse, NetworkError, TooManyRedirectsError
 from app.core.security.policy import TargetPolicy
 
@@ -31,7 +32,8 @@ class SafeHttpClient:
         self._max_redirects = max_redirects
         self._max_retries = max_retries
         self._retry_delay = retry_delay
-        self._session = session or requests.Session()
+        # без своей сессии соединяемся только с адресами, проверенными политикой (DNS rebinding)
+        self._session = session or pinned_session(policy)
         self._session.headers["User-Agent"] = USER_AGENT
 
     def get(self, url: str) -> HttpResponse:
