@@ -26,6 +26,9 @@ def test_defaults_match_the_values_used_before_configuration_existed():
     assert settings.max_redirects == 5
     assert settings.max_retries == 2
     assert settings.retry_delay == 0.5
+    assert settings.max_parallel_runs == 2
+    assert settings.rate_limit_runs == 10
+    assert settings.rate_limit_window == 60.0
 
 
 def test_empty_environment_gives_defaults():
@@ -59,6 +62,16 @@ def test_all_variables_are_read():
         {"QAXRAY_HTTP_TIMEOUT": "30", "QAXRAY_MAX_BYTES": "5000000", "QAXRAY_MAX_REDIRECTS": "10"},
         {"QAXRAY_MAX_RETRIES": "0", "QAXRAY_RETRY_DELAY": "0"},
         {"QAXRAY_MAX_RETRIES": "3", "QAXRAY_RETRY_DELAY": "5"},
+        {
+            "QAXRAY_MAX_PARALLEL_RUNS": "1",
+            "QAXRAY_RATE_LIMIT_RUNS": "1",
+            "QAXRAY_RATE_LIMIT_WINDOW": "10",
+        },
+        {
+            "QAXRAY_MAX_PARALLEL_RUNS": "4",
+            "QAXRAY_RATE_LIMIT_RUNS": "30",
+            "QAXRAY_RATE_LIMIT_WINDOW": "600",
+        },
     ],
 )
 def test_boundary_values_are_accepted(environment):
@@ -80,6 +93,12 @@ def test_boundary_values_are_accepted(environment):
         ("QAXRAY_MAX_RETRIES", "4"),
         ("QAXRAY_RETRY_DELAY", "-1"),
         ("QAXRAY_RETRY_DELAY", "6"),
+        ("QAXRAY_MAX_PARALLEL_RUNS", "0"),
+        ("QAXRAY_MAX_PARALLEL_RUNS", "5"),
+        ("QAXRAY_RATE_LIMIT_RUNS", "0"),
+        ("QAXRAY_RATE_LIMIT_RUNS", "31"),
+        ("QAXRAY_RATE_LIMIT_WINDOW", "9"),
+        ("QAXRAY_RATE_LIMIT_WINDOW", "601"),
     ],
 )
 def test_out_of_range_values_are_rejected_and_name_the_variable(variable, value):

@@ -6,6 +6,7 @@ from flask import (
     Response,
     current_app,
     jsonify,
+    make_response,
     redirect,
     render_template,
     request,
@@ -17,6 +18,7 @@ from werkzeug.wrappers import Response as RedirectResponse
 from app.core.security.policy import TargetRejectedError
 from app.schemas.run import RunRecord, RunStatus
 from app.schemas.target import RunTarget, describe_errors, parse_path_line
+from app.services.rate_limiter import RateLimiter
 from app.services.report_export import KINDS, build_export, has_failed, is_ready
 from app.services.run_store import RunLimitError, RunStore
 
@@ -45,7 +47,7 @@ def index() -> str:
 
 
 @bp.post("/check")
-def check() -> str | tuple[str, int] | RedirectResponse:
+def check() -> str | tuple[str, int] | RedirectResponse | Response:
     values = {
         "site_url": request.form.get("site_url", "").strip(),
         "api_docs_url": request.form.get("api_docs_url", "").strip(),
@@ -78,6 +80,15 @@ def check() -> str | tuple[str, int] | RedirectResponse:
     if errors or target is None:
         return render_template("index.html", values=values, errors=errors), 400
 
+    limiter: RateLimiter = current_app.extensions["rate_limiter"]
+    decision = limiter.check(request.remote_addr or "unknown")  # заголовки прокси не учитываются
+    if not decision.allowed:
+        errors["site_url"] = (
+            f"Слишком много запусков с вашего адреса: повторите через {decision.retry_after} с"
+        )
+        limited = make_response(render_template("index.html", values=values, errors=errors), 429)
+        limited.headers["Retry-After"] = str(decision.retry_after)
+        return limited
     manager: Manager = current_app.extensions["run_manager"]
     try:
         record = manager.start(target)

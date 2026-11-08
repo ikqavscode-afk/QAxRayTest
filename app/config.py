@@ -16,6 +16,9 @@ _RULES = (
     ("max_retries", "QAXRAY_MAX_RETRIES", 0, 3, True),
     ("retry_delay", "QAXRAY_RETRY_DELAY", 0.0, 5.0, False),
     ("browser_page_timeout", "QAXRAY_BROWSER_PAGE_TIMEOUT", 5.0, 60.0, False),
+    ("max_parallel_runs", "QAXRAY_MAX_PARALLEL_RUNS", 1, 4, True),
+    ("rate_limit_runs", "QAXRAY_RATE_LIMIT_RUNS", 1, 30, True),
+    ("rate_limit_window", "QAXRAY_RATE_LIMIT_WINDOW", 10.0, 600.0, False),
 )
 # Переключатели «0 или 1»: (поле, переменная окружения)
 _SWITCHES = (
@@ -29,7 +32,7 @@ class SettingsError(ValueError):
 
 
 class Settings(BaseModel):
-    """Параметры HTTP-клиента. Значения по умолчанию совпадают с прежними зашитыми в код."""
+    """Параметры HTTP-клиента, браузера и ограничений запуска. Значения по умолчанию совпадают с прежними зашитыми в код."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -39,6 +42,11 @@ class Settings(BaseModel):
     max_retries: int = Field(2, ge=0, le=3)
     retry_delay: float = Field(0.5, ge=0.0, le=5.0, allow_inf_nan=False)
     browser_page_timeout: float = Field(20.0, ge=5.0, le=60.0, allow_inf_nan=False)
+    max_parallel_runs: int = Field(
+        2, ge=1, le=4
+    )  # одновременно идущих запусков (у каждого свой браузер)
+    rate_limit_runs: int = Field(10, ge=1, le=30)  # запусков с одного адреса за окно
+    rate_limit_window: float = Field(60.0, ge=10.0, le=600.0, allow_inf_nan=False)  # окно, секунды
     browser_headless: bool = True
     browser_no_sandbox: bool = False  # только для одноразовых машин CI
 
