@@ -14,7 +14,7 @@ h1 { margin: .5rem 0; }
 a { color: var(--accent); }
 .brand { display:inline-flex; align-items:center; min-height:2.75rem; color: var(--accent); font-weight: 700; text-decoration: none; }
 .foot { max-width: 56rem; margin: 2rem auto; padding: 0 1rem; color: var(--muted); font-size: .9rem; }
-.skip { position:absolute; left:-999px; } .skip:focus { left:1rem; top:1rem; background:var(--accent); color:#000; padding:.5rem; }
+.skip { position:absolute; left:-999px; } .skip:focus { left:1rem; top:1rem; display:inline-flex; align-items:center; min-height:2.75rem; background:var(--accent); color:#000; padding:.5rem 1rem; }
 .lead { color: var(--muted); }
 .card { background: var(--panel); border:1px solid var(--line); border-radius: .75rem; padding: 1rem; }
 .field { margin-bottom: 1rem; }

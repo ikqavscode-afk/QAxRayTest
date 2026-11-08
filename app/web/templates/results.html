@@ -17,7 +17,8 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit">Остановить запуск</button>
     </form>
-    <p class="hint"><a href="{{ url_for('main.run_page', run_id=record.run_id) }}">Обновить страницу</a>, если результаты не появляются сами. Страница обновляется автоматически, пока выполняется запуск.</p>
+    <p><a class="button" href="{{ url_for('main.run_page', run_id=record.run_id) }}">Обновить страницу</a></p>
+    <p class="hint">Страница обновляется автоматически, пока выполняется запуск. Нажмите «Обновить страницу», если результаты не появляются сами.</p>
   </section>
   {% elif record.status.value == 'STOPPED' %}
   <p id="progress-text" role="status">Запуск остановлен: выполнено {{ done }} из {{ record.total }} проверок. Ниже результаты выполненных.</p>

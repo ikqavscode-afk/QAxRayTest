@@ -101,7 +101,9 @@ def test_focus_indicator_is_defined_and_never_removed():
     assert not re.search(r"outline\s*:\s*(none|0)\b", CSS)
 
 
-@pytest.mark.parametrize("selector", ["button, .button", "label.check", "td a", ".brand"])
+@pytest.mark.parametrize(
+    "selector", ["button, .button", "label.check", "td a", ".brand", ".skip:focus"]
+)
 def test_interactive_elements_have_at_least_44px_touch_target(selector):
     assert to_px(declared(selector, "min-height")) >= 44
 
@@ -196,3 +198,15 @@ def test_links_use_the_accent_color_with_aa_contrast_and_stay_underlined():
     colors = variables()
     assert contrast(colors["accent"], colors["bg"]) >= 4.5
     assert contrast(colors["accent"], colors["panel"]) >= 4.5
+
+
+def test_running_page_refresh_link_is_a_button_with_a_full_touch_target(tmp_path):
+    """Ссылка «Обновить страницу» не прячется внутри абзаца: у неё зона нажатия кнопки."""
+    from app.schemas.target import RunTarget
+
+    service = StubService(RunReport(results=[]))
+    manager, store = sync_manager(service)
+    app = create_app(service=service, store=store, manager=manager)
+    record = store.create(RunTarget(site_url="https://example.com/"))
+    html = app.test_client().get(f"/runs/{record.run_id}").get_data(as_text=True)
+    assert re.search(r'<a class="button" href="[^"]+">Обновить страницу</a>', html)
