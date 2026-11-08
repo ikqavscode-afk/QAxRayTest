@@ -13,6 +13,7 @@
 <h1>Новая проверка</h1>
 <p class="lead">Введите адрес сайта, подтвердите право на его тестирование и запустите стандартный набор базовых проверок. Поля API необязательны.</p>
 <form method="post" action="{{ url_for('main.check') }}" class="card" novalidate>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {{ url_field("site_url", "Адрес сайта", "https://example.com", "Полный адрес с http:// или https://. Адреса внутренних сетей запрещены.") }}
   <fieldset class="group">
     <legend>API (необязательно)</legend>

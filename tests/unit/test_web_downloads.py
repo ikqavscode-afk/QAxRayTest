@@ -38,7 +38,7 @@ def env():
     service = StubService(RunReport(results=[]))
     manager, store = sync_manager(service)
     app = create_app(service=service, store=store, manager=manager)
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, CSRF_ENABLED=False)
     return app.test_client(), store
 
 

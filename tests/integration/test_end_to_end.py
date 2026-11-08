@@ -79,14 +79,18 @@ def test_scenario_full_run_from_form_to_reports(stack, network):
 def test_scenario_stop_in_the_middle(stack, network, gate):
     """Остановка во время выполнения: запуск STOPPED, отчёт частичный, браузер закрыт."""
     entered, release = gate
-    stack_run = stack.client.post("/check", data={"site_url": SITE + "/", "consent": "on"})
+    stack_run = stack.client.post(
+        "/check", data={"site_url": SITE + "/", "consent": "on", "csrf_token": stack.token()}
+    )
     assert stack_run.status_code == 303
     run_id = stack_run.headers["Location"].rsplit("/", 1)[-1]
     assert entered.wait(10), "запуск не дошёл до сети"
     running = json.loads(stack.client.get(f"/runs/{run_id}/status").get_data(as_text=True))
     assert running["status"] == "RUNNING"
 
-    stopped = stack.client.post(f"/runs/{run_id}/stop")
+    stopped = stack.client.post(
+        f"/runs/{run_id}/stop", data={"csrf_token": stack.token(f"/runs/{run_id}")}
+    )
     assert stopped.status_code == 303
     release.set()
     assert stack.manager.wait(run_id, 20)
@@ -106,6 +110,10 @@ def test_scenario_rejected_address_and_missing_browser(make_stack, network):
     assert run_id is None and reply.status_code == 400
     assert len(network.calls) == before  # ни одного запроса
     assert stack.store.get("x" * 20) is None
+    # без токена форма не принимается совсем
+    forged = stack.client.post("/check", data={"site_url": SITE, "consent": "on"})
+    assert forged.status_code == 403
+    assert len(network.calls) == before
 
     stack = make_stack(browser_error=BrowserNotInstalledError("нет Chrome"))
     run_id, _ = stack.run()

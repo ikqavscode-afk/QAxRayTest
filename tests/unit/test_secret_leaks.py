@@ -18,7 +18,7 @@ def env():
     service = StubService(leaky_report(3))
     manager, store = sync_manager(service)
     app = create_app(service=service, store=store, manager=manager)
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, CSRF_ENABLED=False)
     return app.test_client(), store
 
 

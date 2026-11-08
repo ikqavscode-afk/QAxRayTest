@@ -89,7 +89,7 @@
 
 | ID | Задача | SP | Приоритет |
 |---|---|---|---|
-| PB-050 | Защита от CSRF в форме | 3 | Must |
+| PB-050 | Защита от CSRF в форме ✅ ([ADR-0013](../decisions/0013-csrf-protection.md)) | 3 | Must |
 | PB-051 | Ограничение частоты и числа параллельных запусков | 3 | Must |
 | PB-052 | DNS rebinding: соединение с проверенным IP ([ADR-0003](../decisions/0003-dns-rebinding-and-known-risks.md)) | 5 | Must |
 | PB-053 | Повторный аудит интерфейса по [стандартам](../standards/ui-ux-standards.md): ручная проверка скринридером и клавиатурой, узкий экран | 3 | Should |

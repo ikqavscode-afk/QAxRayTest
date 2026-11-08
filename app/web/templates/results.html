@@ -14,6 +14,7 @@
     <p id="progress-text" role="status" aria-live="polite">Подготовка запуска…</p>
     {% endif %}
     <form method="post" action="{{ url_for('main.stop_run', run_id=record.run_id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit">Остановить запуск</button>
     </form>
     <p class="hint"><a href="{{ url_for('main.run_page', run_id=record.run_id) }}">Обновить страницу</a>, если результаты не появляются сами. Страница обновляется автоматически, пока выполняется запуск.</p>

@@ -67,9 +67,14 @@ class Stack:
     factory: FakeFactory
     browser: FakeBrowser
 
+    def token(self, path="/"):
+        """Токен защиты формы со страницы, как это делает браузер."""
+        html = self.client.get(path).get_data(as_text=True)
+        return re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
+
     def run(self, **form):
         """Отправляет форму и ждёт конца запуска; возвращает (id запуска, ответ формы)."""
-        data = {"site_url": SITE, "consent": "on", **form}
+        data = {"site_url": SITE, "consent": "on", "csrf_token": self.token(), **form}
         reply = self.client.post("/check", data=data)
         if reply.status_code != 303:
             return None, reply

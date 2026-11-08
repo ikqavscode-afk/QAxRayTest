@@ -154,6 +154,7 @@ def test_scrollable_results_table_is_reachable_and_named_for_keyboard_users():
     service = StubService(RunReport(results=[result]))
     manager, store = sync_manager(service)
     app = create_app(service=service, store=store, manager=manager)
+    app.config.update(CSRF_ENABLED=False)
     html = (
         app.test_client()
         .post(

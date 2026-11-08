@@ -29,7 +29,7 @@ def make_client():
     def _make(service, store=None):
         manager, store = sync_manager(service, store)
         app = create_app(service=service, store=store, manager=manager)
-        app.config.update(TESTING=True)
+        app.config.update(TESTING=True, CSRF_ENABLED=False)
         return app.test_client()
 
     return _make
