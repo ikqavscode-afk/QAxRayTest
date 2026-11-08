@@ -24,6 +24,7 @@ _RULES = (
 _SWITCHES = (
     ("browser_headless", "QAXRAY_BROWSER_HEADLESS"),
     ("browser_no_sandbox", "QAXRAY_BROWSER_NO_SANDBOX"),
+    ("cookie_secure", "QAXRAY_COOKIE_SECURE"),
 )
 
 
@@ -49,6 +50,9 @@ class Settings(BaseModel):
     rate_limit_window: float = Field(60.0, ge=10.0, le=600.0, allow_inf_nan=False)  # окно, секунды
     browser_headless: bool = True
     browser_no_sandbox: bool = False  # только для одноразовых машин CI
+    cookie_secure: bool = (
+        False  # 1 при работе по HTTPS: cookie сессии уходит только по защищённому соединению
+    )
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> "Settings":

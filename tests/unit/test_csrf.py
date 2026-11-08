@@ -143,3 +143,20 @@ def test_protection_can_be_switched_off_only_by_explicit_config(env):
     app.config.update(CSRF_ENABLED=False)
     assert app.test_client().post("/check", data=FORM).status_code == 303
     assert len(service.targets) == 1
+
+
+def test_cookie_is_not_secure_by_default_so_local_http_works(env):
+    app, _, _ = env
+    assert "Secure" not in app.test_client().get("/").headers["Set-Cookie"]
+
+
+def test_cookie_gets_secure_flag_when_enabled_in_settings():
+    from app.config import Settings
+
+    service = StubService(RunReport(results=[]))
+    manager, store = sync_manager(service)
+    app = create_app(
+        service=service, store=store, manager=manager, settings=Settings(cookie_secure=True)
+    )
+    reply = app.test_client().get("/", base_url="https://localhost")
+    assert "Secure" in reply.headers["Set-Cookie"]

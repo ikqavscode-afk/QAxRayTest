@@ -33,5 +33,6 @@ def create_app(
         settings.rate_limit_runs, settings.rate_limit_window
     )
     init_csrf(app)
+    app.config.update(SESSION_COOKIE_SECURE=settings.cookie_secure)
     app.register_blueprint(bp)
     return app

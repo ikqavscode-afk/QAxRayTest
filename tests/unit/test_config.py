@@ -29,6 +29,7 @@ def test_defaults_match_the_values_used_before_configuration_existed():
     assert settings.max_parallel_runs == 2
     assert settings.rate_limit_runs == 10
     assert settings.rate_limit_window == 60.0
+    assert settings.cookie_secure is False
 
 
 def test_empty_environment_gives_defaults():
